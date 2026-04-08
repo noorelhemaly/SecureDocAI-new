@@ -1,0 +1,22 @@
+{
+  "DOC_003": {
+    "symmetric_key": "55e5258337348fe0d3ecc1c1a91608b1509bf7ab3d2d062283dc93fdb7cdb5fc",
+    "salt": "9b1e0cfa4abf3d45a758d4f21bb091fb",
+    "created_at": "2026-01-15T11:21:20.812067",
+    "algorithm": "PQC-Hybrid (Kyber-768 + AES-256-GCM)",
+    "quantum_resistant": true,
+    "key_size_bits": 256,
+    "pqc_algorithm": "Kyber-768",
+    "symmetric_algorithm": "AES-256-GCM"
+  },
+  "DOC_004": {
+    "symmetric_key": "076e78bf9dc646d4178767b89c47ae0cf31ea2a12ca1f3b637eac1b6354188f7",
+    "salt": "a586d50f3bb790a2c87bd42eb111bd1d",
+    "created_at": "2026-01-15T11:21:20.814904",
+    "algorithm": "PQC-Hybrid (Kyber-768 + AES-256-GCM)",
+    "quantum_resistant": true,
+    "key_size_bits": 256,
+    "pqc_algorithm": "Kyber-768",
+    "symmetric_algorithm": "AES-256-GCM"
+  }
+}
