@@ -11,8 +11,6 @@ Supports English and Arabic text extraction.
 Requirements:
 - pip install pymupdf pytesseract pillow pdf2image
 - Tesseract OCR: brew install tesseract (macOS) / apt install tesseract-ocr tesseract-ocr-ara (Ubuntu)
-
-Author: SecureDoc AI Team
 """
 
 import os
@@ -54,6 +52,11 @@ except ImportError:
         QWEN_OCR_AVAILABLE = False
         _qwen_ocr_image_bytes = None
         _qwen_is_available = None
+
+# Maximum pages to run through Qwen OCR for scanned PDFs.
+# Qwen is ~74s/page on CPU — capping avoids multi-minute hangs on long PDFs.
+# Remaining pages fall back to Tesseract. Override with QWEN_MAX_PDF_PAGES env var.
+QWEN_MAX_PDF_PAGES = int(os.environ.get("QWEN_MAX_PDF_PAGES", 10))
 
 
 class PDFExtractor:
@@ -471,13 +474,19 @@ class PDFExtractor:
 
         try:
             images = convert_from_bytes(pdf_bytes, dpi=200)
+            total_pages = len(images)
             text_parts = []
 
-            for image in images:
+            if QWEN_OCR_AVAILABLE and total_pages > QWEN_MAX_PDF_PAGES:
+                print(f"[QwenOCR] PDF has {total_pages} pages — Qwen limited to first "
+                      f"{QWEN_MAX_PDF_PAGES}; Tesseract used for remainder.")
+
+            for i, image in enumerate(images):
                 page_text = ""
 
-                # Try Qwen first
-                if QWEN_OCR_AVAILABLE and _qwen_ocr_image_bytes is not None:
+                # Try Qwen first — but only for the first QWEN_MAX_PDF_PAGES pages.
+                # Beyond that, Tesseract is used to keep processing time reasonable.
+                if QWEN_OCR_AVAILABLE and _qwen_ocr_image_bytes is not None and i < QWEN_MAX_PDF_PAGES:
                     try:
                         import io
                         buf = io.BytesIO()
@@ -486,9 +495,9 @@ class PDFExtractor:
                         if result.get('success'):
                             page_text = result.get('text', '')
                     except Exception as qe:
-                        print(f"[QwenOCR] PDF page error: {qe}")
+                        print(f"[QwenOCR] PDF page {i+1} error: {qe}")
 
-                # Fall back to Tesseract if Qwen gave nothing
+                # Fall back to Tesseract if Qwen gave nothing (or was skipped)
                 if not page_text and TESSERACT_AVAILABLE and self.tesseract_installed:
                     page_text = pytesseract.image_to_string(
                         image,

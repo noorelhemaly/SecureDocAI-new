@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Component, ReactNode } from 'react';
 import { Navigation } from './components/Navigation';
 import { Dashboard } from './components/Dashboard';
 import { UploadView } from './components/UploadView';
@@ -9,7 +9,37 @@ import { PipelineStepsView } from './components/PipelineStepsView';
 import { LoginPage } from './components/LoginPage';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { SettingsProvider } from './context/SettingsContext';
-import { Loader2, ShieldOff } from 'lucide-react';
+import { Loader2, ShieldOff, AlertTriangle } from 'lucide-react';
+
+// ── Error Boundary ────────────────────────────────────────────────────────────
+class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center p-8">
+          <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-8 text-center">
+            <div className="w-16 h-16 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mx-auto mb-4">
+              <AlertTriangle className="w-8 h-8 text-red-600 dark:text-red-400" />
+            </div>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">Something went wrong</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+              {(this.state.error as Error).message || 'An unexpected error occurred.'}
+            </p>
+            <button
+              onClick={() => { this.setState({ error: null }); window.location.hash = 'dashboard'; }}
+              className="px-5 py-2 bg-[#1E3A8A] text-white rounded-lg hover:bg-[#1E3A8A]/90 transition-colors text-sm"
+            >
+              Go to Dashboard
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const VALID_VIEWS = ['dashboard', 'upload', 'history', 'audit', 'settings', 'pipeline-steps'];
 
@@ -115,7 +145,7 @@ function AppContent() {
       case 'upload':
         return <UploadView />;
       case 'history':
-        return <HistoryView />;
+        return <HistoryView onViewChange={handleViewChange} />;
       case 'audit':
         return <AuditTrailView />;
       case 'settings':
@@ -161,10 +191,12 @@ function AppContent() {
 
 export default function App() {
   return (
-    <SettingsProvider>
-      <AuthProvider>
-        <AppContent />
-      </AuthProvider>
-    </SettingsProvider>
+    <ErrorBoundary>
+      <SettingsProvider>
+        <AuthProvider>
+          <AppContent />
+        </AuthProvider>
+      </SettingsProvider>
+    </ErrorBoundary>
   );
 }

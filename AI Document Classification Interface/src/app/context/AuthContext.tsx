@@ -1,73 +1,68 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { getUsers, type User } from '../services/api';
+
+export interface User {
+  user_id: string;
+  username: string;
+  name: string;
+  role: string;
+  access_level: number;
+  department: string;
+}
 
 interface AuthContextType {
   user: User | null;
-  users: User[];
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (userId: string) => Promise<boolean>;
+  login: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const API_BASE = 'http://127.0.0.1:5001';
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Load users and check for saved session
-    const initAuth = async () => {
+    const saved = localStorage.getItem('securedoc_user');
+    if (saved) {
       try {
-        const usersData = await getUsers();
-        setUsers(usersData);
-
-        // Check for saved session
-        const savedUserId = localStorage.getItem('currentUserId');
-        if (savedUserId) {
-          const savedUser = usersData.find(u => u.user_id === savedUserId);
-          if (savedUser) {
-            setUser(savedUser);
-          }
-        }
-      } catch (error) {
-        console.error('Failed to load users:', error);
-      } finally {
-        setIsLoading(false);
+        setUser(JSON.parse(saved));
+      } catch {
+        localStorage.removeItem('securedoc_user');
       }
-    };
-
-    initAuth();
+    }
+    setIsLoading(false);
   }, []);
 
-  const login = async (userId: string): Promise<boolean> => {
-    const selectedUser = users.find(u => u.user_id === userId);
-    if (selectedUser) {
-      setUser(selectedUser);
-      localStorage.setItem('currentUserId', userId);
-      return true;
+  const login = async (username: string, password: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const res = await fetch(`${API_BASE}/api/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        return { success: false, error: data.error || 'Invalid username or password' };
+      }
+      setUser(data.user);
+      localStorage.setItem('securedoc_user', JSON.stringify(data.user));
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: 'Cannot connect to API server. Is Flask running?' };
     }
-    return false;
   };
 
   const logout = () => {
     setUser(null);
-    localStorage.removeItem('currentUserId');
+    localStorage.removeItem('securedoc_user');
   };
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        users,
-        isAuthenticated: !!user,
-        isLoading,
-        login,
-        logout,
-      }}
-    >
+    <AuthContext.Provider value={{ user, isAuthenticated: !!user, isLoading, login, logout }}>
       {children}
     </AuthContext.Provider>
   );
@@ -75,8 +70,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (context === undefined) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 }

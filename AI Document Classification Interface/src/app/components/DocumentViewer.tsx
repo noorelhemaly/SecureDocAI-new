@@ -12,6 +12,7 @@ interface DocumentData {
   encrypted?: boolean;
   original_filename?: string;
   redacted_fields?: string[];
+  heavy_redaction?: boolean;
   metadata?: {
     text_length: number;
     classification_method: string;
@@ -36,11 +37,12 @@ interface DocumentViewerProps {
 }
 
 const canDownloadDocument = (userLevel: number, classification: string): boolean => {
+  // Download follows the same access rules as viewing
   switch (classification) {
     case 'C0': return userLevel >= 1;
     case 'C1': return userLevel >= 2;
-    case 'C2': return userLevel >= 4;
-    case 'C3': return userLevel >= 5;
+    case 'C2': return userLevel >= 3;
+    case 'C3': return userLevel >= 3;
     default:   return false;
   }
 };
@@ -411,8 +413,25 @@ export function DocumentViewer({ docId, onClose }: DocumentViewerProps) {
                 )}
               </div>
 
-              {/* Redaction notice */}
-              {document.redacted_fields && document.redacted_fields.length > 0 && (
+              {/* Heavy redaction notice (C3 + L3) */}
+              {document.heavy_redaction && (
+                <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl">
+                  <div className="flex items-start gap-2">
+                    <Shield className="w-4 h-4 text-red-600 dark:text-red-400 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-sm font-bold text-red-700 dark:text-red-400">
+                        Heavy Redaction Applied — C3 Document
+                      </p>
+                      <p className="text-xs text-red-600 dark:text-red-300 mt-0.5">
+                        Your access level (L3) permits viewing this C3 document with heavy redaction. Only name, department, and date fields are visible. Full access requires Level 4+.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Standard redaction notice */}
+              {!document.heavy_redaction && document.redacted_fields && document.redacted_fields.length > 0 && (
                 <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl">
                   <div className="flex items-start gap-2">
                     <Eye className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />

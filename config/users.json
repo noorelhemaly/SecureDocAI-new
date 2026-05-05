@@ -1,0 +1,152 @@
+{
+  "finance_manager": {
+    "user_id": "finance_manager",
+    "username": "finance_manager",
+    "password": "demo123",
+    "name": "Ahmed Samy Hassan",
+    "access_level": 4,
+    "role": "Finance Manager",
+    "department": "Finance",
+    "created_at": "2026-01-01T09:00:00.000000"
+  },
+  "finance_analyst": {
+    "user_id": "finance_analyst",
+    "username": "finance_analyst",
+    "password": "demo123",
+    "name": "Mona Kamal Nasser",
+    "access_level": 3,
+    "role": "Analyst",
+    "department": "Finance",
+    "created_at": "2026-01-01T09:00:00.000000"
+  },
+  "finance_staff": {
+    "user_id": "finance_staff",
+    "username": "finance_staff",
+    "password": "demo123",
+    "name": "Khaled Farouk Ibrahim",
+    "access_level": 2,
+    "role": "Finance Staff",
+    "department": "Finance",
+    "created_at": "2026-01-01T09:00:00.000000"
+  },
+  "marketing_manager": {
+    "user_id": "marketing_manager",
+    "username": "marketing_manager",
+    "password": "demo123",
+    "name": "Sara Tarek Mahmoud",
+    "access_level": 4,
+    "role": "Manager",
+    "department": "Marketing",
+    "created_at": "2026-01-01T09:00:00.000000"
+  },
+  "marketing_analyst": {
+    "user_id": "marketing_analyst",
+    "username": "marketing_analyst",
+    "password": "demo123",
+    "name": "Omar Adel Youssef",
+    "access_level": 3,
+    "role": "Analyst",
+    "department": "Marketing",
+    "created_at": "2026-01-01T09:00:00.000000"
+  },
+  "marketing_staff": {
+    "user_id": "marketing_staff",
+    "username": "marketing_staff",
+    "password": "demo123",
+    "name": "Nadia Hassan Ali",
+    "access_level": 2,
+    "role": "Staff",
+    "department": "Marketing",
+    "created_at": "2026-01-01T09:00:00.000000"
+  },
+  "hr_manager": {
+    "user_id": "hr_manager",
+    "username": "hr_manager",
+    "password": "demo123",
+    "name": "Fatma Mostafa Selim",
+    "access_level": 4,
+    "role": "HR Manager",
+    "department": "HR",
+    "created_at": "2026-01-01T09:00:00.000000"
+  },
+  "hr_analyst": {
+    "user_id": "hr_analyst",
+    "username": "hr_analyst",
+    "password": "demo123",
+    "name": "Mohamed Gamal Abdel",
+    "access_level": 3,
+    "role": "Analyst",
+    "department": "HR",
+    "created_at": "2026-01-01T09:00:00.000000"
+  },
+  "hr_staff": {
+    "user_id": "hr_staff",
+    "username": "hr_staff",
+    "password": "demo123",
+    "name": "Amira Samir Lotfy",
+    "access_level": 2,
+    "role": "HR Staff",
+    "department": "HR",
+    "created_at": "2026-01-01T09:00:00.000000"
+  },
+  "customer_service_officer": {
+    "user_id": "customer_service_officer",
+    "username": "customer_service_officer",
+    "password": "demo123",
+    "name": "Layla Mostafa Kamel",
+    "access_level": 2,
+    "role": "Customer Service Officer",
+    "department": "Customer Service",
+    "created_at": "2026-01-01T09:00:00.000000"
+  },
+  "branch_operations": {
+    "user_id": "branch_operations",
+    "username": "branch_operations",
+    "password": "demo123",
+    "name": "Tarek Hussein Shahin",
+    "access_level": 3,
+    "role": "Operations Officer",
+    "department": "Operations",
+    "created_at": "2026-01-01T09:00:00.000000"
+  },
+  "branch_manager": {
+    "user_id": "branch_manager",
+    "username": "branch_manager",
+    "password": "demo123",
+    "name": "Walid Anwar Farid",
+    "access_level": 4,
+    "role": "Branch Manager",
+    "department": "Operations",
+    "created_at": "2026-01-01T09:00:00.000000"
+  },
+  "dpo": {
+    "user_id": "dpo",
+    "username": "dpo",
+    "password": "demo123",
+    "name": "Data Protection Officer",
+    "access_level": 4,
+    "role": "DPO",
+    "department": "All",
+    "created_at": "2026-01-01T09:00:00.000000"
+  },
+  "ciso": {
+    "user_id": "ciso",
+    "username": "ciso",
+    "password": "demo123",
+    "name": "Noor Elhemaly",
+    "access_level": 5,
+    "role": "CISO",
+    "department": "All",
+    "created_at": "2026-01-01T09:00:00.000000"
+  },
+  "viewer": {
+    "user_id": "viewer",
+    "username": "viewer",
+    "password": "demo123",
+    "name": "Guest Viewer",
+    "access_level": 1,
+    "role": "Viewer",
+    "department": "None",
+    "created_at": "2026-01-01T09:00:00.000000"
+  }
+}

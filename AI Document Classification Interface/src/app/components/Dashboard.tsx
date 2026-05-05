@@ -43,7 +43,7 @@ export function Dashboard({ onViewChange }: DashboardProps) {
     try {
       const [statsData, auditData, sigData] = await Promise.all([
         getStatistics(),
-        getAuditLogs(),
+        getAuditLogs(user?.user_id),
         getSignatureStatus().catch(() => null),
       ]);
       setStats(statsData);
@@ -86,6 +86,7 @@ export function Dashboard({ onViewChange }: DashboardProps) {
   const accessibleDocsCount = classificationData.reduce((sum, item) => sum + item.value, 0);
   const totalDocs = stats?.documents_stored || 0;
   const encryptedDocs = stats?.encrypted_documents || 0;
+  const c2c3Total = (stats?.classifications?.C2 || 0) + (stats?.classifications?.C3 || 0);
   const encryptionRate = totalDocs > 0 ? ((encryptedDocs / totalDocs) * 100).toFixed(0) : '0';
 
   const recentActivity = auditLogs
@@ -104,21 +105,37 @@ export function Dashboard({ onViewChange }: DashboardProps) {
 
   const eventTypeLabel: Record<string, string> = {
     DOCUMENT_CLASSIFICATION: 'Classified',
+    DOCUMENT_CLASSIFIED: 'Classified',
     DOCUMENT_SIGNED: 'Signed',
+    DOCUMENT_ENCRYPTED: 'Encrypted',
     ENCRYPTION_APPLIED: 'Encrypted',
+    DOCUMENT_ENCRYPTED_STORAGE: 'Encrypted',
+    DOCUMENT_VIEWED: 'Viewed',
+    DOCUMENT_PREVIEWED: 'Previewed',
+    DOCUMENT_DOWNLOADED: 'Downloaded',
     DOCUMENT_ACCESS: 'Accessed',
+    ACCESS_GRANTED: 'Access Granted',
     ACCESS_DENIED: 'Access Denied',
     DOCUMENT_UPLOAD: 'Uploaded',
+    USER_LOGIN: 'Login',
     GENESIS: 'Chain Init',
   };
 
   const eventTypeColor: Record<string, string> = {
     DOCUMENT_CLASSIFICATION: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+    DOCUMENT_CLASSIFIED: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
     DOCUMENT_SIGNED: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400',
+    DOCUMENT_ENCRYPTED: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
     ENCRYPTION_APPLIED: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+    DOCUMENT_ENCRYPTED_STORAGE: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+    DOCUMENT_VIEWED: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+    DOCUMENT_PREVIEWED: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400',
+    DOCUMENT_DOWNLOADED: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
     DOCUMENT_ACCESS: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+    ACCESS_GRANTED: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
     ACCESS_DENIED: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-    DOCUMENT_UPLOAD: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400',
+    DOCUMENT_UPLOAD: 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400',
+    USER_LOGIN: 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400',
   };
 
   if (error) {
@@ -190,11 +207,11 @@ export function Dashboard({ onViewChange }: DashboardProps) {
           <div className="absolute top-[22px] left-[10%] right-[10%] h-px bg-gradient-to-r from-blue-300/40 via-violet-300/40 via-amber-300/40 via-emerald-300/40 to-rose-300/40 dark:from-blue-500/20 dark:via-violet-500/20 dark:via-amber-500/20 dark:via-emerald-500/20 dark:to-rose-500/20 pointer-events-none" />
 
           {[
-            { num: '01', label: 'Extract',  sub: 'Qwen2.5-VL',      icon: Eye,         lightBg: 'bg-blue-100',    lightRing: 'ring-blue-200',    lightIcon: 'text-blue-600',    lightNum: 'text-blue-400',    darkBg: 'dark:bg-blue-500/10',    darkRing: 'dark:ring-blue-500/30',    darkIcon: 'dark:text-blue-400',    darkNum: 'dark:text-blue-500/60'    },
+            { num: '01', label: 'Extract',  sub: 'Qwen2.5-VL / OCR', icon: Eye,         lightBg: 'bg-blue-100',    lightRing: 'ring-blue-200',    lightIcon: 'text-blue-600',    lightNum: 'text-blue-400',    darkBg: 'dark:bg-blue-500/10',    darkRing: 'dark:ring-blue-500/30',    darkIcon: 'dark:text-blue-400',    darkNum: 'dark:text-blue-500/60'    },
             { num: '02', label: 'Classify', sub: 'LLaMA 3 + Rules',  icon: Cpu,         lightBg: 'bg-violet-100',  lightRing: 'ring-violet-200',  lightIcon: 'text-violet-600',  lightNum: 'text-violet-400',  darkBg: 'dark:bg-violet-500/10',  darkRing: 'dark:ring-violet-500/30',  darkIcon: 'dark:text-violet-400',  darkNum: 'dark:text-violet-500/60' },
-            { num: '03', label: 'Encrypt',  sub: 'AES-256 / PQC',   icon: Lock,        lightBg: 'bg-amber-100',   lightRing: 'ring-amber-200',   lightIcon: 'text-amber-600',   lightNum: 'text-amber-400',   darkBg: 'dark:bg-amber-500/10',   darkRing: 'dark:ring-amber-500/30',   darkIcon: 'dark:text-amber-400',   darkNum: 'dark:text-amber-500/60'  },
-            { num: '04', label: 'Sign',     sub: 'Dilithium3',       icon: CheckCircle, lightBg: 'bg-emerald-100', lightRing: 'ring-emerald-200', lightIcon: 'text-emerald-600', lightNum: 'text-emerald-400', darkBg: 'dark:bg-emerald-500/10', darkRing: 'dark:ring-emerald-500/30', darkIcon: 'dark:text-emerald-400', darkNum: 'dark:text-emerald-500/60'},
-            { num: '05', label: 'Audit',    sub: 'Signed Chain',     icon: Database,    lightBg: 'bg-rose-100',    lightRing: 'ring-rose-200',    lightIcon: 'text-rose-600',    lightNum: 'text-rose-400',    darkBg: 'dark:bg-rose-500/10',    darkRing: 'dark:ring-rose-500/30',    darkIcon: 'dark:text-rose-400',    darkNum: 'dark:text-rose-500/60'   },
+            { num: '03', label: 'Sign',     sub: 'Dilithium3 · FIPS 204', icon: CheckCircle, lightBg: 'bg-emerald-100', lightRing: 'ring-emerald-200', lightIcon: 'text-emerald-600', lightNum: 'text-emerald-400', darkBg: 'dark:bg-emerald-500/10', darkRing: 'dark:ring-emerald-500/30', darkIcon: 'dark:text-emerald-400', darkNum: 'dark:text-emerald-500/60'},
+            { num: '04', label: 'Encrypt',  sub: 'Kyber-768 + AES',  icon: Lock,        lightBg: 'bg-amber-100',   lightRing: 'ring-amber-200',   lightIcon: 'text-amber-600',   lightNum: 'text-amber-400',   darkBg: 'dark:bg-amber-500/10',   darkRing: 'dark:ring-amber-500/30',   darkIcon: 'dark:text-amber-400',   darkNum: 'dark:text-amber-500/60'  },
+            { num: '05', label: 'Audit',    sub: 'Signed blockchain', icon: Database,    lightBg: 'bg-rose-100',    lightRing: 'ring-rose-200',    lightIcon: 'text-rose-600',    lightNum: 'text-rose-400',    darkBg: 'dark:bg-rose-500/10',    darkRing: 'dark:ring-rose-500/30',    darkIcon: 'dark:text-rose-400',    darkNum: 'dark:text-rose-500/60'   },
           ].map(({ num, label, sub, icon: Icon, lightBg, lightRing, lightIcon, lightNum, darkBg, darkRing, darkIcon, darkNum }) => (
             <div key={label} className="flex flex-col items-center text-center px-1">
               <div className={`relative w-11 h-11 rounded-2xl ${lightBg} ${darkBg} ring-1 ${lightRing} ${darkRing} flex items-center justify-center mb-3 z-10`}>
@@ -217,16 +234,18 @@ export function Dashboard({ onViewChange }: DashboardProps) {
           color="blue"
         />
         <StatCard
-          title="Dilithium3 Signatures"
-          value={loading ? '...' : String(sigStatus?.total_signed ?? '—')}
+          title="Documents Signed"
+          value={loading ? '...' : `${sigStatus?.total_signed ?? 0} / ${totalDocs}`}
           icon={Shield}
           color="green"
+          trend={!loading && sigStatus ? { value: 'content integrity verified', isPositive: true } : undefined}
         />
         <StatCard
-          title="Encryption Rate"
-          value={loading ? '...' : `${encryptionRate}%`}
+          title="C2 & C3 Encrypted"
+          value={loading ? '...' : `${encryptedDocs} / ${c2c3Total}`}
           icon={Lock}
           color="amber"
+          trend={!loading ? { value: 'sensitive docs PQC-protected', isPositive: encryptedDocs === c2c3Total } : undefined}
         />
         <StatCard
           title="Audit Events"
@@ -293,9 +312,11 @@ export function Dashboard({ onViewChange }: DashboardProps) {
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 flex flex-col">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Recent Activity</h3>
-            <button onClick={() => onViewChange?.('audit')} className="text-xs text-[#0891B2] hover:underline">
-              View all →
-            </button>
+            {userLevel >= 5 && (
+              <button onClick={() => onViewChange?.('audit')} className="text-xs text-[#0891B2] hover:underline">
+                View all →
+              </button>
+            )}
           </div>
           <div className="flex-1 space-y-1 overflow-auto">
             {loading ? (
@@ -393,7 +414,7 @@ export function Dashboard({ onViewChange }: DashboardProps) {
             <div className="grid grid-cols-2 gap-2">
               {[
                 { label: 'Upload', icon: Upload, view: 'upload' },
-                { label: 'Audit Trail', icon: ClipboardList, view: 'audit' },
+                ...(userLevel >= 5 ? [{ label: 'Audit Trail', icon: ClipboardList, view: 'audit' }] : []),
                 { label: 'History', icon: Eye, view: 'history' },
                 { label: 'Settings', icon: Activity, view: 'settings' },
               ].map(({ label, icon: Icon, view }) => (

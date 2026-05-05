@@ -47,6 +47,8 @@ class DocumentProtectionChain:
 
         # In-memory index: doc_id -> content_hash
         self._protection_index: Dict[str, str] = {}
+        # In-memory index: doc_id -> classification (for encrypted-doc tamper check)
+        self._classification_index: Dict[str, str] = {}
 
         # Load existing chain and pending events
         self._load_chain()
@@ -207,20 +209,18 @@ class DocumentProtectionChain:
 
     def _rebuild_index(self):
         """Scan own chain for DOCUMENT_PROTECTED events to rebuild index."""
-        for block in self.chain:
-            for event in block.events:
-                if event.get('event_type') == 'DOCUMENT_PROTECTED':
-                    doc_id = event.get('data', {}).get('document_id')
-                    content_hash = event.get('data', {}).get('content_hash')
-                    if doc_id and content_hash:
-                        self._protection_index[doc_id] = content_hash
-        # Also check pending events
-        for event in self.pending_events:
+        all_events = [e for block in self.chain for e in block.events] + self.pending_events
+        for event in all_events:
             if event.get('event_type') == 'DOCUMENT_PROTECTED':
-                doc_id = event.get('data', {}).get('document_id')
-                content_hash = event.get('data', {}).get('content_hash')
-                if doc_id and content_hash:
-                    self._protection_index[doc_id] = content_hash
+                data = event.get('data', {})
+                doc_id = data.get('document_id')
+                content_hash = data.get('content_hash')
+                classification = data.get('classification')
+                if doc_id:
+                    if content_hash:
+                        self._protection_index[doc_id] = content_hash
+                    if classification:
+                        self._classification_index[doc_id] = classification
 
     # ------------------------------------------------------------------
     # Document hashing
@@ -323,13 +323,52 @@ class DocumentProtectionChain:
             if content is None:
                 content = doc_data.get('original_text') or ''
                 if not content and doc_data.get('encrypted_data'):
-                    return {
-                        'doc_id': doc_id,
-                        'verified': False,
-                        'error': 'Document is encrypted; provide decrypted content for verification',
-                        'stored_hash': stored_hash,
-                        'elapsed_ms': round((time.perf_counter() - start) * 1000, 2),
-                    }
+                    # Document is encrypted — original text is not stored in plain form.
+                    # Use the ciphertext as the hashable content (consistent with protect_document).
+                    enc_data = doc_data.get('encrypted_data', {})
+                    ciphertext = enc_data.get('ciphertext', '')
+                    if ciphertext:
+                        content = ciphertext
+                    else:
+                        # No ciphertext available; fall back to classification-only check
+                        stored_classification = self._classification_index.get(doc_id)
+                        if stored_classification is None:
+                            self._rebuild_index()
+                            stored_classification = self._classification_index.get(doc_id)
+                        current_classification = doc_data.get('classification', '')
+                        elapsed_ms = (time.perf_counter() - start) * 1000
+                        if stored_classification is None:
+                            return {
+                                'doc_id': doc_id,
+                                'verified': None,
+                                'encrypted': True,
+                                'note': 'Document is encrypted; no verifiable content found.',
+                                'stored_hash': stored_hash,
+                                'elapsed_ms': round(elapsed_ms, 2),
+                            }
+                        classification_ok = (current_classification == stored_classification)
+                        result = {
+                            'doc_id': doc_id,
+                            'verified': classification_ok,
+                            'encrypted': True,
+                            'current_classification': current_classification,
+                            'stored_classification': stored_classification,
+                            'match': classification_ok,
+                            'stored_hash': stored_hash,
+                            'elapsed_ms': round(elapsed_ms, 2),
+                        }
+                        if not classification_ok:
+                            result['warning'] = (
+                                f'TAMPERING DETECTED: Classification changed from '
+                                f'"{stored_classification}" to "{current_classification}" '
+                                f'since document was protected.'
+                            )
+                        self._log_event('DOCUMENT_VERIFIED', {
+                            'document_id': doc_id,
+                            'verified': classification_ok,
+                            'encrypted': True,
+                        })
+                        return result
             if classification is None:
                 classification = doc_data.get('classification', '')
             if metadata is None and doc_data:
@@ -396,6 +435,76 @@ class DocumentProtectionChain:
                 return json.load(f)
         except (json.JSONDecodeError, IOError):
             return None
+
+    def protect_document_from_file(self, doc_id: str, user_id: str = None) -> Dict:
+        """
+        Protect an existing stored document by reading it from storage.
+        For encrypted documents, hashes the ciphertext (consistent with the pipeline).
+        For plain documents, hashes the original_text.
+        """
+        doc_data = self._load_stored_document(doc_id)
+        if not doc_data:
+            return {'protected': False, 'error': f'Document {doc_id} not found in storage'}
+
+        # Determine content to hash
+        enc_data = doc_data.get('encrypted_data', {})
+        ciphertext = enc_data.get('ciphertext', '') if enc_data else ''
+        original_text = doc_data.get('original_text') or ''
+
+        if ciphertext:
+            content = ciphertext
+        elif original_text:
+            content = original_text
+        else:
+            return {'protected': False, 'error': f'Document {doc_id} has no hashable content'}
+
+        classification = doc_data.get('final_classification') or doc_data.get('classification', '')
+        stored_meta = doc_data.get('metadata', {})
+        metadata = {
+            'classification_method': stored_meta.get('classification_method'),
+            'triggers': stored_meta.get('triggers'),
+            'confidence': stored_meta.get('confidence'),
+        }
+
+        return self.protect_document(
+            doc_id=doc_id,
+            content=content,
+            classification=classification,
+            metadata=metadata,
+            user_id=user_id,
+        )
+
+    def protect_all_from_storage(self, user_id: str = None) -> Dict:
+        """
+        Retroactively protect all documents found in storage that are not yet indexed.
+        Returns counts of protected, skipped (already protected), and failed documents.
+        """
+        results = {'protected': [], 'skipped': [], 'failed': []}
+
+        if not os.path.exists(self.storage_dir):
+            return results
+
+        for filename in os.listdir(self.storage_dir):
+            if not filename.endswith('.json'):
+                continue
+            doc_id = filename[:-5]  # strip .json
+            if doc_id in self._protection_index:
+                results['skipped'].append(doc_id)
+                continue
+            try:
+                result = self.protect_document_from_file(doc_id, user_id=user_id)
+                if result.get('protected'):
+                    results['protected'].append(doc_id)
+                else:
+                    results['failed'].append({'doc_id': doc_id, 'reason': result.get('error')})
+            except Exception as e:
+                results['failed'].append({'doc_id': doc_id, 'reason': str(e)})
+
+        # Mine all pending events into the chain
+        if results['protected']:
+            self._mine_pending()
+
+        return results
 
     def get_protection_status(self) -> Dict:
         """Get summary of all protected documents."""

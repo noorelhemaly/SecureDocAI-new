@@ -13,8 +13,10 @@ export interface ClassificationResult {
   confidence_factors?: {
     agreement: number;
     evidence: number;
+    llm?: number;
   };
   confidence_explanation?: string;
+  confidence_formula?: string;
   llm_raw_confidence?: number;
   method: string;
   llm_classification: string;
@@ -22,6 +24,7 @@ export interface ClassificationResult {
   agreement: boolean;
   reasoning: string;
   triggers: string[];
+  cde_detected?: string[];
   encrypted: boolean;
   storage_path: string;
   timestamp: string;
@@ -34,6 +37,7 @@ export interface ClassificationResult {
 
 export interface User {
   user_id: string;
+  username?: string;
   name: string;
   role: string;
   access_level: number;
@@ -69,6 +73,49 @@ export interface StoredDocument {
   llm_classification?: string;
   rules_classification?: string | null;
   triggers?: string[];
+  cde_detected?: string[];
+  department?: string | null;
+  document_type?: string;
+  status?: 'ACTIVE';
+  ai_classification?: string;
+  ai_confidence?: number;
+  ai_reasoning?: string;
+  uploaded_by?: string | null;
+  original_filename?: string | null;
+  integrity_check?: {
+    verified: boolean | null;
+    encrypted?: boolean;
+    warning?: string;
+    current_classification?: string;
+    stored_classification?: string;
+    error?: string;
+    note?: string;
+  } | null;
+  flag?: FlagInfo | null;
+  human_overrides?: Array<{
+    overridden_by_id: string;
+    overridden_by_name: string;
+    overridden_at: string;
+    old_classification: string;
+    new_classification: string;
+    reasoning: string;
+  }> | null;
+}
+
+export interface FlagInfo {
+  flag_id: string;
+  status: 'PENDING' | 'RESOLVED';
+  flagged_by_id: string;
+  flagged_by_name: string;
+  flagged_at: string;
+  comment: string;
+  suggested_classification: 'C0' | 'C1' | 'C2' | 'C3' | null;
+  resolved_by_id: string | null;
+  resolved_by_name: string | null;
+  resolved_at: string | null;
+  resolution_action: 'MAINTAIN' | 'OVERRIDE' | null;
+  resolution_comment: string | null;
+  override_classification: 'C0' | 'C1' | 'C2' | 'C3' | null;
 }
 
 export interface AuditLog {
@@ -224,8 +271,9 @@ export interface PipelineStepsResult {
       classification: {
         classification: 'C0' | 'C1' | 'C2' | 'C3';
         confidence: number;
-        confidence_factors?: { agreement: number; evidence: number };
+        confidence_factors?: { agreement: number; evidence: number; llm?: number };
         confidence_explanation?: string;
+        confidence_formula?: string;
         llm_raw_confidence?: number | null;
         method: string;
         llm_classification: string;
@@ -233,6 +281,7 @@ export interface PipelineStepsResult {
         agreement: boolean;
         reasoning: string;
         triggers: string[];
+        cde_detected?: string[];
       };
       encryption: {
         encrypted: boolean;
@@ -264,7 +313,8 @@ export async function classifyDocumentWithSteps(
   text: string,
   docId?: string,
   userId?: string,
-  settings?: Partial<ClassificationSettings>
+  settings?: Partial<ClassificationSettings>,
+  trueLabel?: string,
 ): Promise<PipelineStepsResult> {
   const response = await fetch(`${API_BASE}/api/classify/steps`, {
     method: 'POST',
@@ -274,6 +324,7 @@ export async function classifyDocumentWithSteps(
       text,
       user_id: userId,
       settings: settings ?? undefined,
+      true_label: trueLabel || undefined,
     }),
   });
   if (!response.ok) {
@@ -286,12 +337,14 @@ export async function classifyDocumentWithSteps(
 export async function classifyPDFWithSteps(
   file: File,
   docId?: string,
-  userId?: string
+  userId?: string,
+  trueLabel?: string
 ): Promise<PipelineStepsResult> {
   const formData = new FormData();
   formData.append('file', file);
   if (docId) formData.append('doc_id', docId);
   if (userId) formData.append('user_id', userId);
+  if (trueLabel) formData.append('true_label', trueLabel);
   const response = await fetch(`${API_BASE}/api/classify/pdf/steps`, {
     method: 'POST',
     body: formData,
@@ -347,8 +400,11 @@ export async function getUsers(): Promise<User[]> {
 }
 
 // Get stored documents
-export async function getDocuments(): Promise<StoredDocument[]> {
-  const response = await fetch(`${API_BASE}/api/documents`);
+export async function getDocuments(userId?: string): Promise<StoredDocument[]> {
+  const url = userId
+    ? `${API_BASE}/api/documents?user_id=${encodeURIComponent(userId)}`
+    : `${API_BASE}/api/documents`;
+  const response = await fetch(url);
   const data = await response.json();
 
   if (!data.success) {
@@ -375,12 +431,15 @@ export async function getSignatureStatus(): Promise<{
 }
 
 // Get audit logs
-export async function getAuditLogs(): Promise<{
+export async function getAuditLogs(userId?: string): Promise<{
   logs: AuditLog[];
   chain_valid: boolean;
   count: number;
 }> {
-  const response = await fetch(`${API_BASE}/api/audit-logs`);
+  const url = userId
+    ? `${API_BASE}/api/audit-logs?user_id=${encodeURIComponent(userId)}`
+    : `${API_BASE}/api/audit-logs`;
+  const response = await fetch(url);
   const data = await response.json();
 
   if (!data.success) {
@@ -697,6 +756,92 @@ export async function getBlockchainAudit(userId: string): Promise<BlockchainAudi
     throw new Error(data.error || data.message || 'Failed to fetch blockchain audit trail');
   }
 
+  return data;
+}
+
+// ─── Human Review / Flag API ─────────────────────────────────────────────────
+
+export async function flagDocument(
+  docId: string,
+  payload: {
+    flagged_by_id: string;
+    flagged_by_name: string;
+    comment: string;
+    suggested_classification?: 'C0' | 'C1' | 'C2' | 'C3' | null;
+  }
+): Promise<{ success: boolean; flag: FlagInfo }> {
+  const response = await fetch(`${API_BASE}/api/documents/${docId}/flag`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json();
+  if (!data.success) throw new Error(data.error || 'Failed to flag document');
+  return data;
+}
+
+export async function resolveFlag(
+  docId: string,
+  payload: {
+    resolved_by_id: string;
+    resolved_by_name: string;
+    action: 'MAINTAIN' | 'OVERRIDE';
+    comment: string;
+    override_classification?: 'C0' | 'C1' | 'C2' | 'C3' | null;
+  }
+): Promise<{ success: boolean; flag: FlagInfo }> {
+  const response = await fetch(`${API_BASE}/api/documents/${docId}/flag/resolve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json();
+  if (!data.success) throw new Error(data.error || 'Failed to resolve flag');
+  return data;
+}
+
+export async function getFlaggedDocuments(
+  status?: 'PENDING' | 'RESOLVED',
+  userId?: string
+): Promise<{
+  success: boolean;
+  count: number;
+  documents: Array<{
+    doc_id: string;
+    original_filename: string | null;
+    classification: string;
+    timestamp: string;
+    department: string | null;
+    document_type: string | null;
+    flag: FlagInfo;
+  }>;
+}> {
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  if (userId) params.set('user_id', userId);
+  const query = params.toString();
+  const url = `${API_BASE}/api/flagged-documents${query ? `?${query}` : ''}`;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error('Failed to fetch flagged documents');
+  return response.json();
+}
+
+export async function cisoOverride(
+  docId: string,
+  payload: {
+    overridden_by_id: string;
+    overridden_by_name: string;
+    new_classification: 'C0' | 'C1' | 'C2' | 'C3';
+    reasoning: string;
+  }
+): Promise<{ success: boolean; override: { old_classification: string; new_classification: string } }> {
+  const response = await fetch(`${API_BASE}/api/documents/${docId}/override`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json();
+  if (!data.success) throw new Error(data.error || 'Failed to override classification');
   return data;
 }
 

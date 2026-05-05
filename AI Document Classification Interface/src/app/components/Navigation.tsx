@@ -27,15 +27,10 @@ export function Navigation({ activeView, onViewChange, darkMode, onToggleDarkMod
   const { user, logout } = useAuth();
   const { t, isRTL } = useSettings();
 
-  const baseItems = [
+  const navItems = [
     { id: 'dashboard', label: t('nav.dashboard'), icon: LayoutDashboard },
     { id: 'upload', label: t('nav.upload'), icon: Upload },
     { id: 'history', label: t('nav.history'), icon: History },
-  ];
-
-  // Audit trail before settings, Level 5 only
-  const navItems = [
-    ...baseItems,
     ...(user?.access_level === 5
       ? [{ id: 'audit', label: 'Audit Trail', icon: Link2 }]
       : []),

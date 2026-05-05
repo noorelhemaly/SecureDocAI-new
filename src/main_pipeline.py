@@ -24,7 +24,7 @@ class Config:
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
     # Config files
-    USERS_FILE = os.path.join(BASE_DIR, "config", "rbac_users.json")
+    USERS_FILE = os.path.join(BASE_DIR, "config", "users.json")
     AUDIT_LOG_FILE = os.path.join(BASE_DIR, "results", "audit_logs.json")
     ENCRYPTION_KEYS_FILE = os.path.join(BASE_DIR, "config", "pqc_encryption_keys.json")
 
@@ -57,83 +57,223 @@ class LLMClassifier:
         self.base_url = base_url
         print(f"   🦙 LLM Classifier initialized: {model} via Ollama (with fallback)")
 
-        self.system_prompt = """You are a document classification assistant for an Egyptian financial institution.
-Classify documents into exactly one of these security levels:
+        self.system_prompt = """You are a document classification officer at Bank Misr, Egypt's largest state-owned bank.
+        Your role is to classify every document for data protection, access control, 
+        and regulatory compliance under Egypt's Personal Data Protection Law (PDPL) and 
+        the Central Bank of Egypt (CBE) Information Security Framework.
 
-- C0 (Public): Press releases, public announcements, job postings, service updates, holiday notices, training materials, policy documents, educational content
+Classify each document into exactly one level: C0, C1, C2, or C3.
 
-- C1 (Internal): Internal memos, meeting minutes (routine), department communications, project updates, team info, non-sensitive internal documents
+══════════════════════════════════════════════════
+CLASSIFICATION LEVELS
+══════════════════════════════════════════════════
 
-- C2 (Confidential): Employment contracts, non-executive agreements, confidential business documents, personal employee data (without sensitive details), routine confidential correspondence
+C0 — PUBLIC
+Documents intended for general public distribution. No personal data whatsoever.
+Examples:
+  • Press releases, public regulatory announcements
+  • Job postings on career websites or public boards
+  • Product brochures, publicly published fee schedules
+  • Interest rate tables published on the bank website
+  • Customer-facing holiday notices, general service updates
+  • Financial literacy or awareness materials for the public
+  • Corporate governance manuals and codes of ethics published on the bank's website
+  • Consumer protection frameworks and customer charters published publicly
+  • CBE-published regulations, circulars, and supervisory frameworks (publicly issued)
+  • Code of corporate governance for shareholders and public stakeholders
+  • Publicly released annual reports and sustainability reports
+  • Investor relations reports, quarterly earnings releases, financial highlights
+  • Capital adequacy disclosures, Basel III Pillar 3 reports published publicly
+  • Aggregate financial summaries (total assets, NPL ratio, ROE, NIM) for public audiences
+Key test: Could this be posted on the bank's public website without any concern?
+CRITICAL NOTE on C3 in public financial reports: Aggregate financial metrics (earnings per
+share, return on equity, NPL ratio, capital adequacy ratio, risk-weighted assets, total
+provisions) in a published investor relations or annual report are NOT C3 triggers —
+they describe portfolio-level data, not a specific customer. C3 risk_rating means a
+Low/Medium/High designation assigned to ONE SPECIFIC NAMED CUSTOMER, not a category of assets.
 
-- C3 (Highly Sensitive): Documents requiring maximum protection, including:
-  * **Personal Identifiable Information (PII)**: Actual National ID numbers, passport numbers, real IBAN/account numbers, credit card numbers
-  * **Financial Data**: Specific salary/payroll amounts, executive compensation packages, stock options, bonuses, financial credentials, account balances
-  * **Strategic Information**: M&A (merger/acquisition) plans, board meeting minutes with strategic decisions, business acquisition targets, confidential negotiations
-  * **Trade Secrets & IP**: Proprietary algorithms, trading strategies, product formulas, confidential research, competitive intelligence
-  * **Security & Risk**: Security vulnerabilities, data breach reports, fraud investigations, incident reports with sensitive details, penetration test results
-  * **Legal & Regulatory**: Legal disputes, litigation documents, regulatory violations, compliance issues, internal investigations
-  * **Customer Data**: Large-scale customer databases, bulk customer financial information (account balances, assets under management), customer lists with competitive intelligence value, high-value client portfolios
-  * **Executive/Board Level**: CEO/executive private communications with sensitive content, confidential board decisions
+──────────────────────────────────────────────────
 
-CRITICAL CLASSIFICATION RULES:
-1. **Context Over Keywords**: Distinguish between MENTIONING sensitive terms vs CONTAINING actual sensitive data
-   - "Training on how to protect National IDs" → C0 (educational)
-   - "Employee National ID: 29012851201234" → C3 (actual sensitive data)
+C1 — INTERNAL
+Documents for bank employees only — no personal data.
+If leaked, causes only operational embarrassment, not a privacy or contractual breach.
+First names in a meeting context are acceptable ("Ahmed presented") — but
+no contact details, IDs, or employment specifics.
+Examples:
+  • Internal policies, procedures, SOPs, circulars, guidelines
+  • All-staff announcements (training schedules, IT alerts, system updates)
+  • Business continuity plans, IT security guidelines
+  • Meeting agendas and minutes (staff first names only, no contact info)
+  • Internal department reports with no customer or personal data
+  • Onboarding guides, training materials for employees
+  • Quarterly training schedules (Q1/Q2/Q3/Q4) — even if they contain no sensitive data,
+    a bank's staff training schedule is addressed to employees and is NOT a public document
+  • Branch operations bulletins, IT maintenance notices, system downtime alerts
+Key test: Is this for bank staff only, with no identifiable personal or business-confidential data?
+IMPORTANT — do NOT call a training schedule, staff bulletin, or employee notice "C0 Public".
+These are always C1 Internal even if the content seems routine or non-sensitive.
 
-2. **Intent Analysis**: Consider the document's purpose
-   - Policy/training about confidentiality → C0 or C1
-   - Actual confidential information → C2 or C3
+──────────────────────────────────────────────────
 
-3. **Specificity Check**: Look for real data vs generic references
-   - "IBAN format: EGXXXXXXXXXXXXXXXXX" → C0/C1 (example)
-   - "IBAN: EG380019000100123456789012345" → C3 (real account)
-   - "Salary: competitive" → C0/C1 (generic)
-   - "Salary: 15,000 EGP" → C3 (specific amount)
+C2 — CONFIDENTIAL
+Two independent paths — EITHER qualifies the document as C2.
 
-4. **Document Type Recognition**:
-   - Training materials, policies, procedures → Usually C0 or C1
-   - Templates with placeholders → C0 or C1
-   - Filled forms with real data → C2 or C3
+  PATH A — PERSONAL DATA
+  A real person's full name appears WITH at least one of:
+    email address, phone number, home or work address, signature,
+    employment terms, salary range (e.g. "EGP 15,000–20,000"),
+    contractual terms naming the individual.
+  Examples:
+    • Job offer letters, employment contracts, termination letters
+    • Performance reviews, performance improvement plans (PIPs)
+    • Warning letters, disciplinary notices
+    • Salary certificates (range only — exact figure is C3)
+    • CVs and resumes with contact information
+    • Customer correspondence containing name + email or phone
+    • NDAs signed and named
 
-5. **Public Declaration**: If document explicitly states it's public/for all employees → Strong indicator for C0
+  PATH B — BUSINESS CONFIDENTIAL
+  The document involves a party outside the bank OR contains proprietary
+  business information whose disclosure would harm the bank commercially or legally.
+  Examples:
+    • Vendor contracts, supplier agreements (IBM, Temenos, SWIFT, any vendor)
+    • Service level agreements (SLAs), outsourcing agreements
+    • Non-disclosure agreements with third parties
+    • Pricing negotiations, commercial quotations, payment terms
+    • Scope of work, statement of work, project deliverables
+    • Marketing campaign briefs, agency contracts
+    • Legal correspondence with external law firms or regulators
+    • Internal audit reports and findings (even without PII)
+    • Board presentations, executive strategy documents
+    • M&A discussions, due diligence materials
+    • Budget proposals, financial projections, ROI analyses
+    • Competitive intelligence, market analysis
+  Key test: Would sharing this with a competitor or the public harm the bank
+    financially, legally, or reputationally? → C2
 
-6. **C2 vs C3 Distinction**: Critical decision point
-   C2 (Confidential):
-   - Standard employee contracts without specific financial amounts
-   - Routine confidential business correspondence
-   - General business agreements
-   - Non-executive personal data
+──────────────────────────────────────────────────
 
-   C3 (Highly Sensitive) - Requires ANY of:
-   - Actual PII (National IDs, IBANs, passport numbers, account numbers)
-   - Specific financial amounts (salaries, bonuses, account balances)
-   - Strategic business decisions (M&A, acquisitions, board decisions)
-   - Trade secrets or proprietary information
-   - Security incidents, breaches, vulnerabilities, fraud
-   - Legal disputes, regulatory violations
-   - Executive/board level communications with sensitive content
+C3 — HIGHLY SENSITIVE
+Documents containing regulated personal or financial data that create
+direct regulatory liability under CBE rules or Egypt PDPL Art. 21.
+ANY ONE of the triggers below classifies the ENTIRE document as C3:
 
-   Rule of thumb: If disclosure could cause:
-   - C2: Business embarrassment, competitive disadvantage
-   - C3: Severe financial loss, legal liability, regulatory action, or individual harm
+  IDENTITY:
+  • Egyptian National ID number (14 digits, starts with 2 or 3)
+  • Passport number (one or two letters followed by digits)
 
-CONFIDENCE SCORING:
-- 0.95-1.0: Very confident (clear indicators, unambiguous)
-- 0.80-0.94: Confident (strong indicators, minor ambiguity)
-- 0.60-0.79: Moderate (some indicators, contextual judgment needed)
-- 0.40-0.59: Low confidence (ambiguous, could go either way)
+  FINANCIAL IDENTIFIERS:
+  • Egyptian IBAN (EG followed by 27 digits) — even partially masked (EG****)
+  • Bank account number (a labeled "Account Number: XXXXXXXX" with 6-16 digits)
+    CRITICAL: A bank account STATEMENT showing customer name + account number +
+    balance + transactions is ALWAYS C3 — even if it has no National ID or IBAN.
+    The account number itself is a C3 trigger. Do NOT classify account statements as C2.
+  • Credit card number (16 digits in groups of 4)
+  • EXACT salary in EGP — a specific figure such as "EGP 12,500/month",
+    "net monthly salary is EGP 14,750", "exact net monthly salary is EGP 8,500"
+    IMPORTANT: a salary RANGE (e.g. "EGP 10,000–15,000") is C2, not C3.
+    A salary CERTIFICATE naming a specific employee with their exact salary → C3.
+    Do NOT classify as C2 just because a National ID is absent — exact salary alone is C3.
 
-You MUST respond with ONLY valid JSON in this exact format (no other text):
-{"classification": "C0", "confidence": 0.95, "reasoning": "brief explanation"}
+  AML / KYC / COMPLIANCE:
+  • Customer risk rating (a Low/Medium/High designation for a specific customer)
+  • Sanctions screening result (World-Check, UN sanctions list, automated output)
+  • Source of funds declaration
+  • PEP (Politically Exposed Person) designation for a named individual
 
-Replace C0 with the appropriate level (C0, C1, C2, or C3) and confidence with your actual confidence level."""
+  Legal basis: Egypt PDPL Art. 21, CBE Framework §4.1,
+               Banking Law No. 194/2020 Art. 97.
+
+══════════════════════════════════════════════════
+DECISION FLOWCHART — apply in order, stop at first match
+══════════════════════════════════════════════════
+
+1. Does the document contain any C3 trigger?
+   (National ID • IBAN • account number • exact salary • passport •
+    customer risk rating • sanctions result • source of funds • PEP)
+   → YES → C3. Stop.
+
+2. Does the document involve any party outside the bank?
+   (vendor, supplier, partner, auditor, external law firm, regulator,
+    customer who signed a contract, IBM, any named third-party company)
+   → YES → C2 (Path B). Stop.
+   IMPORTANT EXCEPTION: Publicly published regulations, governance codes, consumer
+   protection frameworks, and supervisory circulars issued BY regulators (CBE, FRA)
+   FOR the public are C0 — NOT C2. Path B applies only to PRIVATE correspondence
+   or contracts WITH external parties, not to publicly issued regulatory documents.
+   Ask: is this a published document FOR the public, or a private deal WITH an outsider?
+
+3. Does the document contain proprietary business information?
+   (pricing, strategy, budget, M&A, audit findings, competitive analysis)
+   → YES → C2 (Path B). Stop.
+
+4. Does the document contain a named individual with personal details?
+   (full name + email, phone, address, salary range, employment/contract terms)
+   → YES → C2 (Path A). Stop.
+
+5. Is the document restricted to bank employees with no personal data?
+   (policy, circular, internal memo, training, staff-only announcement)
+   → YES → C1. Stop.
+   NOTE: Governance manuals, codes of ethics, and corporate governance frameworks
+   PUBLISHED on the bank's public website are C0, not C1 — even if they describe
+   internal policies. The key test is: was this published FOR the general public
+   or FOR employees only? Public publication → C0.
+
+6. Is the document intended for public audiences?
+   (press release, website content, public brochure, customer notice)
+   → YES → C0.
+
+DEFAULT: When uncertain between two adjacent levels → choose the HIGHER one.
+Data protection always errs on the side of caution.
+
+══════════════════════════════════════════════════
+SPECIAL CASES
+══════════════════════════════════════════════════
+
+MASKED / REDACTED DATA (values replaced with XXXX, ****, ●●●●, [REDACTED]):
+  Classify by what the document IS, not only what is visible.
+  A loan application with a masked National ID → still C3.
+  A contract with a redacted company name → still C2.
+  Do not downgrade because data was masked.
+
+EMPTY TEMPLATES (blank forms with no data filled in):
+  Classify as C1. The template itself contains no sensitive data.
+  Once filled with real data, the classification follows the content.
+
+ARABIC DOCUMENTS — apply identical rules. Key Arabic terms:
+  C3 signals: الرقم القومي (National ID) • ايبان / IBAN • رقم الحساب (account no.)
+              راتب محدد (exact salary figure) • جواز سفر (passport)
+  C2 signals: عقد (contract) • اتفاقية (agreement) • عرض عمل (job offer)
+              السيرة الذاتية (CV) • مورد (vendor) • مقدم خدمة (service provider)
+              ميزانية (budget) • استراتيجية (strategy)
+  C1 signals: تعميم (circular) • موظفين (employees) • اجتماع (meeting)
+              تدريب (training) • سياسة (policy) • داخلي (internal)
+
+══════════════════════════════════════════════════
+CONFIDENCE GUIDE
+══════════════════════════════════════════════════
+0.90–1.00  Clear C3 trigger found, or clearly public document — no ambiguity
+0.75–0.89  Strong semantic match — document type and level both clear
+0.60–0.74  Reasonable confidence — minor ambiguity in content or context
+0.45–0.59  Uncertain — mixed signals or sparse text
+Below 0.45 Very unclear — flag for human review
+
+══════════════════════════════════════════════════
+OUTPUT FORMAT — use exactly these labels, one per line
+══════════════════════════════════════════════════
+CLASSIFICATION: [C0/C1/C2/C3]
+CONFIDENCE: [0.00 to 1.00]
+PROCESS: [Account Opening / Loan Processing / Customer Service / Risk Assessment / Back Office — Finance / Back Office — HR / Back Office — Operations / Public Communications / Unknown]
+STAGE: [Customer Identification / Risk Assessment / Account Setup / Ongoing Relationship / Credit Assessment / Internal Operations / Unknown]
+DOCUMENT_TYPE: [specific document type, e.g. "Vendor Contract", "Employment Contract", "Payroll Report", "Internal Circular"]
+CDE_DETECTED: [comma-separated critical data elements found, or NONE]
+REASONING: [One concise paragraph: document type identified, decisive factor for the chosen level, which legal basis applies. Mask sensitive values: National ID → first 4 digits then ****, IBAN → EG****, account number → first 4 digits then ****]"""
 
         # Fallback keywords for when Ollama is not available
         self.fallback_keywords = {
-            'C0': ['announcement', 'public', 'holiday', 'press release', 'service update', 'job opening'],
-            'C1': ['internal', 'meeting', 'minutes', 'department', 'team', 'project', 'memo'],
-            'C2': ['contract', 'employment', 'agreement', 'confidential'],
+            'C0': ['press release', 'job posting', 'public announcement', 'service update', 'holiday notice'],
+            'C1': ['policy', 'procedure', 'standard operating', 'circular', 'bank-wide', 'all staff', 'all employees', 'guideline'],
+            'C2': ['meeting minutes', 'minutes of', 'internal memo', 'contract', 'agreement', 'correspondence', 'campaign brief', 'job offer', 'vendor'],
             'C3': [
                 # PII
                 'national id', 'iban', 'passport number', 'credit card',
@@ -164,63 +304,59 @@ Replace C0 with the appropriate level (C0, C1, C2, or C3) and confidence with yo
     def _fallback_classify(self, text: str) -> Dict[str, Any]:
         """Fallback keyword-based classification when Ollama is unavailable"""
         text_lower = text.lower()
+        _empty = {'process': 'Unknown', 'stage': 'Unknown',
+                  'document_type': 'General Banking Document', 'cde_detected': []}
 
         # Check for C3 indicators first (highest priority)
         for keyword in self.fallback_keywords['C3']:
             if keyword in text_lower:
-                return {
-                    'classification': 'C3',
-                    'confidence': None,  # No AI available
-                    'reasoning': f'Fallback: Found sensitive keyword "{keyword}"'
-                }
+                return {'classification': 'C3', 'confidence': None,
+                        'reasoning': f'Fallback: Found sensitive keyword "{keyword}"',
+                        **_empty}
 
         # Check C2
         for keyword in self.fallback_keywords['C2']:
             if keyword in text_lower:
-                return {
-                    'classification': 'C2',
-                    'confidence': None,  # No AI available
-                    'reasoning': f'Fallback: Found confidential keyword "{keyword}"'
-                }
+                return {'classification': 'C2', 'confidence': None,
+                        'reasoning': f'Fallback: Found confidential keyword "{keyword}"',
+                        **_empty}
 
         # Check C1
         for keyword in self.fallback_keywords['C1']:
             if keyword in text_lower:
-                return {
-                    'classification': 'C1',
-                    'confidence': None,  # No AI available
-                    'reasoning': f'Fallback: Found internal keyword "{keyword}"'
-                }
+                return {'classification': 'C1', 'confidence': None,
+                        'reasoning': f'Fallback: Found internal keyword "{keyword}"',
+                        **_empty}
 
         # Check C0
         for keyword in self.fallback_keywords['C0']:
             if keyword in text_lower:
-                return {
-                    'classification': 'C0',
-                    'confidence': None,  # No AI available
-                    'reasoning': f'Fallback: Found public keyword "{keyword}"'
-                }
+                return {'classification': 'C0', 'confidence': None,
+                        'reasoning': f'Fallback: Found public keyword "{keyword}"',
+                        **_empty}
 
         # Default to C1 (Internal) if no keywords match
         return {
             'classification': 'C1',
-            'confidence': None,  # No AI available
-            'reasoning': 'Fallback: No clear indicators, defaulting to Internal'
+            'confidence': None,
+            'reasoning': 'Fallback: No clear indicators, defaulting to Internal',
+            'process': 'Unknown', 'stage': 'Unknown',
+            'document_type': 'General Banking Document', 'cde_detected': []
         }
 
     def _classify_with_ollama(self, text: str) -> Dict[str, Any]:
-        """Call Ollama API for classification - confidence comes from LLaMA"""
+        """Call Ollama API for classification — parses CLASSIFICATION/CONFIDENCE/REASONING format."""
         try:
             response = requests.post(
                 f"{self.base_url}/api/generate",
                 json={
                     "model": self.model,
-                    "prompt": f"Classify this document:\n\n{text[:2000]}",
+                    "prompt": f"Classify this document:\n\n{text[:6000]}",
                     "system": self.system_prompt,
                     "stream": False,
                     "options": {
-                        "temperature": 0.1,  # Low temperature for consistent classification
-                        "num_predict": 200
+                        "temperature": 0.1,
+                        "num_predict": 700
                     }
                 },
                 timeout=60
@@ -228,40 +364,59 @@ Replace C0 with the appropriate level (C0, C1, C2, or C3) and confidence with yo
             response.raise_for_status()
             result_text = response.json().get("response", "")
 
-            # Parse JSON from response
-            json_match = re.search(r'\{[^}]+\}', result_text)
-            if json_match:
-                result = json.loads(json_match.group())
-                if result.get('classification') in ['C0', 'C1', 'C2', 'C3']:
-                    # Use the confidence that LLaMA provided
-                    confidence = float(result.get('confidence', 0.5))
-                    # Clamp confidence between 0 and 1
-                    confidence = max(0.0, min(1.0, confidence))
+            # --- Parse structured output: CLASSIFICATION / CONFIDENCE / PROCESS / STAGE /
+            #     DOCUMENT_TYPE / CDE_DETECTED / REASONING ---
+            cls_match   = re.search(r'CLASSIFICATION:\s*(C[0-3])', result_text, re.IGNORECASE)
+            conf_match  = re.search(r'CONFIDENCE:\s*([0-9]+\.?[0-9]*)', result_text, re.IGNORECASE)
+            proc_match  = re.search(r'PROCESS:\s*(.+?)(?=\n|\Z)', result_text, re.IGNORECASE)
+            stage_match = re.search(r'STAGE:\s*(.+?)(?=\n|\Z)', result_text, re.IGNORECASE)
+            dtype_match = re.search(r'DOCUMENT_TYPE:\s*(.+?)(?=\n|\Z)', result_text, re.IGNORECASE)
+            cde_match   = re.search(r'CDE_DETECTED:\s*(.+?)(?=\n|\Z)', result_text, re.IGNORECASE)
+            reasoning_match = re.search(
+                r'REASONING:\s*(.+?)(?=\nCLASSIFICATION:|\Z)', result_text,
+                re.IGNORECASE | re.DOTALL
+            )
 
-                    return {
-                        'classification': result['classification'],
-                        'confidence': confidence,
-                        'reasoning': result.get('reasoning', 'LLaMA classification'),
-                        'source': 'llama'
-                    }
+            if cls_match:
+                classification = cls_match.group(1).upper()
+                confidence = float(conf_match.group(1)) if conf_match else 0.75
+                confidence = max(0.0, min(1.0, confidence))
+                reasoning  = reasoning_match.group(1).strip() if reasoning_match else 'LLaMA classification'
+                process    = proc_match.group(1).strip()  if proc_match  else 'Unknown'
+                stage      = stage_match.group(1).strip() if stage_match else 'Unknown'
+                doc_type   = dtype_match.group(1).strip() if dtype_match else 'General Banking Document'
+                cde_raw    = cde_match.group(1).strip()   if cde_match   else 'none'
+                cde_list   = [] if cde_raw.lower() in ('none', 'n/a', '') else \
+                             [c.strip() for c in cde_raw.split(',') if c.strip()]
+                return {
+                    'classification': classification,
+                    'confidence':     confidence,
+                    'reasoning':      reasoning,
+                    'process':        process,
+                    'stage':          stage,
+                    'document_type':  doc_type,
+                    'cde_detected':   cde_list,
+                    'source':         'llama'
+                }
 
-            # Fallback: extract classification from text if JSON parsing failed
+            # Fallback: try to find any C-level mention
+            _fb = {'process': 'Unknown', 'stage': 'Unknown',
+                   'document_type': 'General Banking Document', 'cde_detected': []}
+            # Try to get at least a short excerpt from the raw response for the user
+            _raw_excerpt = result_text.strip()[:300].replace('\n', ' ') if result_text else ''
+            _fallback_reasoning = (
+                f"LLaMA response did not follow structured format. "
+                f"Raw excerpt: {_raw_excerpt}"
+            ) if _raw_excerpt else 'Extracted from LLaMA response (parse failed)'
             for level in ['C3', 'C2', 'C1', 'C0']:
                 if level in result_text:
-                    return {
-                        'classification': level,
-                        'confidence': None,  # AI didn't provide parseable confidence
-                        'reasoning': 'Extracted from LLaMA response (JSON parse failed)',
-                        'source': 'llama_fallback'
-                    }
+                    return {'classification': level, 'confidence': None,
+                            'reasoning': _fallback_reasoning,
+                            'source': 'llama_fallback', **_fb}
 
-            # Could not parse - default to C1
-            return {
-                'classification': 'C1',
-                'confidence': None,  # AI didn't provide parseable confidence
-                'reasoning': 'Could not parse LLaMA response, defaulting to C1',
-                'source': 'llama_error'
-            }
+            return {'classification': 'C1', 'confidence': None,
+                    'reasoning': 'Could not parse LLaMA response, defaulting to C1',
+                    'source': 'llama_error', **_fb}
 
         except requests.exceptions.ConnectionError:
             raise RuntimeError("Ollama not running. Start with: ollama serve")
@@ -444,19 +599,33 @@ def hybrid_classify(text: str, llm_classifier: LLMClassifier,
     llm_class = llm_result['classification']
     rules_class = rules_result['classification']
     llm_confidence = llm_result['confidence']
+    triggers = rules_result.get('triggers', []) if rules_class else []
 
     hierarchy = {'C0': 0, 'C1': 1, 'C2': 2, 'C3': 3}
 
-    # Rules found nothing → check if it's an empty template
+    # Hard triggers = pattern-matched evidence (regex-detected PII, not keyword guesses).
+    # Only hard triggers can override the LLM — keyword-only signals defer to LLM semantics.
+    HARD_TRIGGERS = {
+        'National ID', 'Passport', 'IBAN', 'Salary', 'Account Number',
+        'Credit Card', 'Personal Data', 'Masked Data', 'CV/Resume',
+    }
+    has_hard_trigger = any(t in HARD_TRIGGERS for t in triggers)
+
+    # ── CASE 1: Rules found nothing → LLM decides ──────────────────────────────
     if rules_class is None:
         final_class = llm_class
         reasoning = llm_result.get('reasoning', 'AI classified, no rule triggers')
-
-        # If LLM says C2 but it's likely an empty template, downgrade to C1
         if llm_class == 'C2' and is_likely_empty_template(text):
             final_class = 'C1'
-            reasoning = f"Empty template/form detected - downgraded from C2 to C1 (no actual personal data). Original: {reasoning}"
-
+            reasoning = f"Empty template — downgraded from C2 to C1. {reasoning}"
+        # If LLM over-escalates to C3 but document only has a salary range → cap at C2
+        elif llm_class == 'C3' and security_rules.detect_salary_range(text):
+            final_class = 'C2'
+            reasoning = (
+                "Document contains a salary range/band (not an exact personal salary figure). "
+                "Job offers and promotion letters with a salary range are C2 — individual "
+                "employment records, not systemic risk data."
+            )
         return {
             'classification': final_class,
             'confidence': llm_confidence,
@@ -465,149 +634,243 @@ def hybrid_classify(text: str, llm_classifier: LLMClassifier,
             'rules_classification': None,
             'reasoning': reasoning,
             'agreement': True,
-            'triggers': []
+            'triggers': [],
         }
 
-    # ALWAYS trust rules for C3 (safety-critical) - regardless of mode
+    # ── CASE 2: Rules detected C3 (hard PII/financial triggers) ────────────────
+    # All C3 triggers are now HIGH_PRECISION — LLM result is ignored when any
+    # of these fire. Passport is included under PDPL Article 21: a passport number
+    # uniquely identifies a specific individual and carries the same legal weight
+    # as a National ID. There is no Case 2b / low-precision exception any more.
     if rules_class == 'C3':
+        # All C3 triggers are unconditional — LLM is ignored:
+        # National ID | Passport | IBAN | Credit Card | Salary | Account Number
+        # (PDPL Art. 21 — each uniquely identifies or financially exposes an individual)
+        agreement = (llm_class == 'C3')
+        reasoning = f"Security rules detected: {', '.join(triggers)}"
+        if agreement:
+            reasoning = f"{llm_result['reasoning']} | Rules confirmed: {', '.join(triggers)}"
         return {
             'classification': 'C3',
-            'confidence': llm_confidence,  # Use AI's confidence
-            'method': 'RULES_OVERRIDE',
+            'confidence': llm_confidence,
+            'method': 'AGREEMENT' if agreement else 'RULES_OVERRIDE',
             'llm_classification': llm_class,
             'rules_classification': rules_class,
-            'reasoning': f"Security rules detected C3 triggers: {', '.join(rules_result['triggers'])}",
-            'agreement': llm_class == rules_class,
-            'triggers': rules_result['triggers']
+            'reasoning': reasoning,
+            'agreement': agreement,
+            'triggers': triggers,
         }
 
-    # Agreement - both classifiers agree
+    # ── CASE 3: Both classifiers agree ─────────────────────────────────────────
     if llm_class == rules_class:
-        # For C3, always show the actual triggers detected (more accurate than LLM reasoning)
-        triggers = rules_result.get('triggers', [])
-        if llm_class == 'C3' and triggers:
-            reasoning = f"Detected sensitive data: {', '.join(triggers)}"
-        elif triggers:
-            reasoning = f"{llm_result['reasoning']} (Triggers: {', '.join(triggers)})"
+        if triggers:
+            reasoning = f"{llm_result['reasoning']} (Rules confirmed: {', '.join(triggers)})"
         else:
             reasoning = llm_result['reasoning']
-
         return {
             'classification': llm_class,
-            'confidence': llm_confidence,  # Use AI's confidence
+            'confidence': llm_confidence,
             'method': 'AGREEMENT',
             'llm_classification': llm_class,
             'rules_classification': rules_class,
             'reasoning': reasoning,
             'agreement': True,
-            'triggers': triggers
+            'triggers': triggers,
         }
 
-    # Disagreement - decision based on hybrid_mode
-    if hybrid_mode == 'aggressive':
-        # Aggressive: Trust LLM if confident enough
-        if llm_confidence >= confidence_threshold:
+    # ── CASE 4: Rules found hard PII evidence and want higher class than LLM ───
+    # Rules detected actual personal data the LLM may have missed → escalate.
+    if has_hard_trigger and hierarchy[rules_class] > hierarchy[llm_class]:
+        return {
+            'classification': rules_class,
+            'confidence': llm_confidence,
+            'method': 'RULES_ESCALATED',
+            'llm_classification': llm_class,
+            'rules_classification': rules_class,
+            'reasoning': f"Rules escalated: {rules_result['reasoning']}",
+            'agreement': False,
+            'triggers': triggers,
+        }
+
+    # ── CASE 5: LLM says C3 but rules didn't confirm it ────────────────────────
+    # If document has masked/redacted data, trust LLM's intent but cap at C2.
+    # If rules confirmed this is a PUBLIC document (C0), do not trust LLM C3 —
+    # aggregate risk language and financial figures in published reports are NOT C3.
+    # Otherwise trust the LLM's semantic judgment for C3.
+    if llm_class == 'C3' and rules_class != 'C3':
+        # Rules confirmed publicly distributed document → trust rules → C0.
+        # Annual reports, investor relations, consumer protection publications,
+        # and press releases contain aggregate financial figures and risk language
+        # that the LLM misreads as customer-specific C3 data. Check this FIRST
+        # (before masked-data) so table asterisks in annual reports don't trigger C2.
+        if rules_class == 'C0':
             return {
-                'classification': llm_class,
+                'classification': 'C0',
                 'confidence': llm_confidence,
-                'method': 'LLM_TRUSTED',
+                'method': 'RULES_OVERRIDE',
                 'llm_classification': llm_class,
                 'rules_classification': rules_class,
-                'reasoning': f"LLM confident ({llm_confidence:.0%}): {llm_result['reasoning']}",
+                'reasoning': (
+                    f"{llm_result['reasoning']} "
+                    f"(Rules confirmed public document — LLM C3 overridden to C0; "
+                    f"aggregate financial/risk data in public reports is not a C3 trigger)"
+                ),
                 'agreement': False,
-                'triggers': rules_result.get('triggers', [])
+                'triggers': triggers,
             }
-
-    elif hybrid_mode == 'balanced':
-        # Balanced: Trust LLM if very confident, else use higher
-        if llm_confidence >= confidence_threshold and hierarchy[llm_class] >= hierarchy[rules_class]:
-            return {
-                'classification': llm_class,
-                'confidence': llm_confidence,
-                'method': 'LLM_CONFIDENT',
-                'llm_classification': llm_class,
-                'rules_classification': rules_class,
-                'reasoning': llm_result['reasoning'],
-                'agreement': False,
-                'triggers': rules_result.get('triggers', [])
-            }
-
-    # Conservative mode OR fallback: use higher classification if auto_escalate is True
-    if auto_escalate:
-        if hierarchy[rules_class] > hierarchy[llm_class]:
-            return {
-                'classification': rules_class,
-                'confidence': llm_confidence,  # Use AI's confidence
-                'method': 'RULES_ESCALATED',
-                'llm_classification': llm_class,
-                'rules_classification': rules_class,
-                'reasoning': f"Escalated to rules classification: {rules_result['reasoning']}",
-                'agreement': False,
-                'triggers': rules_result['triggers']
-            }
-        else:
-            # Special case: LLM says C3 but rules don't detect actual PII
-            # Check if data is masked/redacted - if so, downgrade to C2
-            if llm_class == 'C3' and rules_class != 'C3' and security_rules.detect_masked_data(text):
-                return {
-                    'classification': 'C2',
-                    'confidence': llm_confidence,  # Use AI's confidence
-                    'method': 'MASKED_DATA_DOWNGRADE',
-                    'llm_classification': llm_class,
-                    'rules_classification': rules_class,
-                    'reasoning': 'Document contains masked/redacted PII - downgraded from C3 to C2',
-                    'agreement': False,
-                    'triggers': ['Masked Data']
-                }
-
-            # Special case: LLM says C2 but rules detect internal document (training, meeting, etc.)
-            # Trust rules - internal documents shouldn't be escalated to C2 just because of generic emails
-            if llm_class == 'C2' and rules_class == 'C1' and 'Internal keywords' in rules_result.get('triggers', []):
-                return {
-                    'classification': 'C1',
-                    'confidence': llm_confidence,  # Use AI's confidence
-                    'method': 'INTERNAL_DOC_OVERRIDE',
-                    'llm_classification': llm_class,
-                    'rules_classification': rules_class,
-                    'reasoning': f"Internal document detected: {rules_result['reasoning']}",
-                    'agreement': False,
-                    'triggers': rules_result.get('triggers', [])
-                }
-
-            return {
-                'classification': llm_class,
-                'confidence': llm_confidence,  # Use AI's confidence
-                'method': 'LLM_HIGHER',
-                'llm_classification': llm_class,
-                'rules_classification': rules_class,
-                'reasoning': llm_result['reasoning'],
-                'agreement': False,
-                'triggers': rules_result.get('triggers', [])
-            }
-    else:
-        # No auto-escalate: just use LLM result
-        # Still check for masked data
-        if llm_class == 'C3' and rules_class != 'C3' and security_rules.detect_masked_data(text):
+        if security_rules.detect_masked_data(text):
             return {
                 'classification': 'C2',
-                'confidence': llm_confidence,  # Use AI's confidence
+                'confidence': llm_confidence,
                 'method': 'MASKED_DATA_DOWNGRADE',
                 'llm_classification': llm_class,
                 'rules_classification': rules_class,
-                'reasoning': 'Document contains masked/redacted PII - downgraded from C3 to C2',
+                'reasoning': 'Document contains masked/redacted PII — capped at C2 since raw values are not visible.',
                 'agreement': False,
-                'triggers': ['Masked Data']
+                'triggers': triggers + ['Masked Data'],
             }
+        # Rules detected offer/promotion letter with salary → C2 (individual record).
+        if 'Salary (Offer/Promotion Letter)' in triggers:
+            return {
+                'classification': 'C2',
+                'confidence': llm_confidence,
+                'method': 'RULES_OVERRIDE',
+                'llm_classification': llm_class,
+                'rules_classification': rules_class,
+                'reasoning': (
+                    f"Individual employment offer or promotion letter — C2. "
+                    f"One-to-one record; systemic risk requires bulk exposure."
+                ),
+                'agreement': False,
+                'triggers': triggers,
+            }
+        # Rules detected a salary RANGE → cap at C2 (job offers and promotion
+        # letters are individual records, not systemic risk — C2 is correct).
+        if 'Salary Range' in triggers:
+            return {
+                'classification': 'C2',
+                'confidence': llm_confidence,
+                'method': 'RULES_OVERRIDE',
+                'llm_classification': llm_class,
+                'rules_classification': rules_class,
+                'reasoning': (
+                    f"Document contains a salary range/band. Job offers and promotion letters "
+                    f"are C2 — individual employment records, not systemic risk data."
+                ),
+                'agreement': False,
+                'triggers': triggers,
+            }
+        # LLM sees semantic C3 indicators the rules didn't pattern-match
         return {
-            'classification': llm_class,
-            'confidence': llm_confidence,  # Use AI's confidence
-            'method': 'LLM_NO_ESCALATE',
+            'classification': 'C3',
+            'confidence': llm_confidence,
+            'method': 'AI_DECISION',
             'llm_classification': llm_class,
             'rules_classification': rules_class,
             'reasoning': llm_result['reasoning'],
             'agreement': False,
-            'triggers': rules_result.get('triggers', [])
+            'triggers': triggers,
         }
+
+    # ── CASE 6: Rules say C1, LLM says C0 → trust rules only on strong signals ─
+    # Generic internal keywords ('internal', 'training', 'team') appear in public
+    # compliance statements and regulatory disclosures — not enough on their own.
+    # Only escalate to C1 when the document contains an unambiguous structural
+    # signal that it is addressed to internal staff and not for public distribution.
+    STRONG_INTERNAL_SIGNALS = {
+        # Explicit addressee markers — unambiguously internal
+        'staff only', 'for internal use', 'for branch staff', 'branch staff',
+        'internal circulation', 'not for distribution',
+        'staff notice', 'staff memo', 'staff circular',
+        # Document types that are inherently internal
+        # NOTE: bare 'circular' and 'bulletin' are EXCLUDED — annual reports and
+        # public regulatory documents routinely say "CBE circular No. X" or
+        # "financial bulletin", which would falsely escalate a public C0 document.
+        # Bare 'minutes' excluded: annual reports contain "board meeting minutes".
+        # Bare 'memo' excluded: annual reports contain "internal memo" references.
+        'memorandum',           # Full word — rarer in public docs than bare 'memo'
+        'internal memo',        # Requires 'internal' qualifier
+        'internal circular',    # Requires 'internal' qualifier
+        'board minutes',        # Specific phrase — not the bare word 'minutes'
+        'staff meeting',
+        # Training schedules — always internal (staff calendars, course rosters)
+        'training schedule', 'training plan', 'training calendar',
+        'q1 training', 'q2 training', 'q3 training', 'q4 training',
+        'staff training', 'training programme', 'training program',
+        # Arabic equivalents
+        'مذكرة داخلية', 'للاستخدام الداخلي', 'نشرة الفروع', 'تعميم داخلي',
+        'جدول تدريب', 'خطة تدريب', 'برنامج التدريب',
+    }
+    if rules_class == 'C1' and llm_class == 'C0':
+        text_lower_check = text.lower()
+        # Governance/institutional documents (annual reports, investor relations,
+        # regulatory frameworks) are public by definition — even if they happen to
+        # contain a word like "circular" or "bulletin" in passing references to
+        # CBE circulars. Trust the LLM's C0 decision for these.
+        is_governance = any(sig in text_lower_check for sig in security_rules.governance_signals)
+        if is_governance:
+            return {
+                'classification': 'C0',
+                'confidence': llm_confidence,
+                'method': 'AI_DECISION',
+                'llm_classification': llm_class,
+                'rules_classification': rules_class,
+                'reasoning': (
+                    f"{llm_result['reasoning']} "
+                    f"(Governance/public document detected — rules C1 internal keywords "
+                    f"overridden; annual reports and regulatory publications are C0)"
+                ),
+                'agreement': False,
+                'triggers': triggers,
+            }
+        has_strong_internal = any(sig in text_lower_check for sig in STRONG_INTERNAL_SIGNALS)
+        if has_strong_internal:
+            return {
+                'classification': 'C1',
+                'confidence': llm_confidence,
+                'method': 'RULES_ESCALATED',
+                'llm_classification': llm_class,
+                'rules_classification': rules_class,
+                'reasoning': f"Rules escalated: {rules_result['reasoning']}",
+                'agreement': False,
+                'triggers': triggers,
+            }
+
+    # ── CASE 6.5: Rules say C0, LLM says C1 ────────────────────────────────────
+    # Rules identified a governance/public document signal. If LLM's C1 came from
+    # a parse failure or unstructured response (not a confident structured answer),
+    # trust the pattern-based rules. If LLM explicitly returned a structured C1,
+    # trust LLM (C1 is more conservative than C0 and may be correct for internal
+    # governance publications not intended for the general public).
+    if rules_class == 'C0' and llm_class == 'C1':
+        llm_source = llm_result.get('source', '')
+        if llm_source in ('llama_error', 'llama_fallback'):
+            return {
+                'classification': 'C0',
+                'confidence': llm_confidence,
+                'method': 'RULES_OVERRIDE',
+                'llm_classification': llm_class,
+                'rules_classification': rules_class,
+                'reasoning': (
+                    f"LLM response not in structured format — rules identified a public "
+                    f"document. Rules: {rules_result['reasoning']}"
+                ),
+                'agreement': False,
+                'triggers': triggers,
+            }
+
+    # ── CASE 7: All other disagreements → trust LLM ────────────────────────────
+    # Rules used only soft keyword signals. LLM's semantic understanding wins.
+    return {
+        'classification': llm_class,
+        'confidence': llm_confidence,
+        'method': 'AI_DECISION',
+        'llm_classification': llm_class,
+        'rules_classification': rules_class,
+        'reasoning': llm_result['reasoning'],
+        'agreement': False,
+        'triggers': triggers,
+    }
 
 
 # ============================================================================
@@ -641,13 +904,15 @@ class DocumentPipeline:
         try:
             with open(Config.USERS_FILE, 'r') as f:
                 users_data = json.load(f)
-                for uid, user_data in users_data.items():
+                for _uid, user_data in users_data.items():
                     self.rbac.add_user(
                         user_id=user_data['user_id'],
                         name=user_data['name'],
                         access_level=user_data['access_level'],
                         role=user_data['role'],
-                        department=user_data.get('department')
+                        department=user_data.get('department'),
+                        username=user_data.get('username', user_data['user_id']),
+                        password=user_data.get('password', ''),
                     )
             print(f"✅ Loaded {len(users_data)} users from {Config.USERS_FILE}")
         except FileNotFoundError:
@@ -662,7 +927,9 @@ class DocumentPipeline:
                          true_label: str = None,
                          enable_blockchain_protection: bool = False,
                          enable_digital_signature: bool = False,
-                         timing_mode: bool = False) -> Dict[str, Any]:
+                         timing_mode: bool = False,
+                         doc_department: str = None,
+                         original_filename: str = None) -> Dict[str, Any]:
         """
         Process a single document through the complete pipeline
 
@@ -735,6 +1002,7 @@ class DocumentPipeline:
         classification_result['confidence'] = confidence_result['confidence']
         classification_result['confidence_factors'] = confidence_result['factors']
         classification_result['confidence_explanation'] = confidence_result['explanation']
+        classification_result['confidence_formula'] = confidence_result['formula']
         classification_result['llm_raw_confidence'] = confidence_result['llm_raw_confidence']
 
         print(f"   🦙 LLaMA Classification: {classification_result['llm_classification']}")
@@ -868,17 +1136,115 @@ class DocumentPipeline:
                 metadata['true_label'] = true_label
                 metadata['correct'] = classification == true_label
 
+            # ── Human-in-the-Loop: determine verification routing ──────────
+            ai_confidence = classification_result.get('confidence') or 0.0
+            ai_classification = classification_result.get('llm_classification') or classification
+            agreement = classification_result.get('agreement', True)
+            ai_reasoning = classification_result.get('reasoning', '')
+
+            # New structured fields from LLM
+            doc_process   = classification_result.get('process', 'Unknown')
+            doc_stage     = classification_result.get('stage', 'Unknown')
+            doc_type      = classification_result.get('document_type', 'General Banking Document')
+            cde_detected  = classification_result.get('cde_detected', [])
+
+            # Enrich with security rules check_c3_triggers for completeness
+            cde_from_rules = []
+            try:
+                cde_map = self.security_rules.check_c3_triggers(text)
+                cde_from_rules = [k for k, v in cde_map.items() if v]
+                # Merge LLM CDEs with rules CDEs (rules are authoritative for PII)
+                merged_cde = list(set(cde_detected) | set(cde_from_rules))
+                cde_detected = merged_cde
+            except Exception:
+                pass
+
+            # Write back merged CDEs so the API response contains them
+            classification_result['cde_detected'] = cde_detected
+            result['stages']['classification']['cde_detected'] = cde_detected
+
+            # Enrich document_type from rules if LLM gave generic result
+            if doc_type in ('General Banking Document', 'Unknown', '') and text:
+                try:
+                    type_result = self.security_rules.identify_document_type(text)
+                    if type_result.get('confidence', 0) >= 0.80:
+                        doc_process = doc_process if doc_process != 'Unknown' else type_result['process']
+                        doc_stage   = doc_stage   if doc_stage   != 'Unknown' else type_result['stage']
+                        doc_type    = type_result['document_type']
+                except Exception:
+                    pass
+
+            # Did the security rules engine (not just AI) detect C3 triggers?
+            rules_detected_c3 = (classification_result.get('rules_classification') == 'C3')
+            # Did the AI say C3?
+            ai_said_c3 = (ai_classification == 'C3')
+
+            # All documents are immediately active — no verification queue
+            doc_status = 'ACTIVE'
+
+            # Uploader department: from user or explicit param
+            uploader_dept = doc_department
+            if not uploader_dept and user_id:
+                uploader = self.rbac.get_user(user_id)
+                if uploader:
+                    uploader_dept = uploader.department
+
             storage_data = {
                 'doc_id': doc_id,
                 'classification': classification,
                 'timestamp': result['timestamp'],
                 'original_text': text if classification in ['C0', 'C1'] else None,
                 'encrypted_data': result['stages']['encryption'] if result['stages']['encryption']['encrypted'] else None,
-                'metadata': metadata
+                'metadata': metadata,
+                'status': doc_status,
+                'ai_classification': ai_classification,
+                'ai_confidence': ai_confidence,
+                'ai_reasoning': ai_reasoning,
+                'final_classification': classification,
+                'original_ai_classification': ai_classification,
+                'ai_rules_agreed': agreement,
+                'rules_detected_c3': rules_detected_c3,
+                'ai_said_c3': ai_said_c3,
+                # Department / uploader
+                'department': uploader_dept,
+                'original_filename': original_filename,
+                'uploaded_by': user_id,
+                # Structured classification metadata
+                'process': doc_process,
+                'stage': doc_stage,
+                'document_type': doc_type,
+                'cde_detected': cde_detected,
             }
 
             with open(storage_path, 'w', encoding='utf-8') as f:
                 json.dump(storage_data, f, indent=2, ensure_ascii=False)
+
+            # Always update the protection chain after writing the file,
+            # regardless of the enableBlockchainProtection setting.
+            # Verification runs unconditionally in get_stored_documents,
+            # so the chain must always reflect the current file state to
+            # avoid false TAMPERED badges on re-uploads.
+            try:
+                _pc = DocumentProtectionChain(storage_dir=Config.STORAGE_DIR)
+                _enc_stage = result.get('stages', {}).get('encryption', {})
+                _pc_content = (
+                    _enc_stage.get('ciphertext', text)
+                    if _enc_stage.get('encrypted')
+                    else text
+                )
+                _pc.protect_document(
+                    doc_id=doc_id,
+                    content=_pc_content,
+                    classification=classification,
+                    metadata={
+                        'classification_method': classification_result['method'],
+                        'triggers': classification_result.get('triggers', []),
+                        'confidence': classification_result.get('confidence'),
+                    },
+                    user_id=user_id,
+                )
+            except Exception:
+                pass
 
             print(f"   Storage Path:          {storage_path}")
             print(f"   Classification:        {classification}")
@@ -910,9 +1276,17 @@ class DocumentPipeline:
             protection_chain = DocumentProtectionChain(
                 storage_dir=Config.STORAGE_DIR,
             )
+            # For encrypted docs, hash the ciphertext (original text is wiped from storage).
+            # For plain docs, hash the original text as usual.
+            _enc_stage = result.get('stages', {}).get('encryption', {})
+            _protection_content = (
+                _enc_stage.get('ciphertext', text)
+                if _enc_stage.get('encrypted')
+                else text
+            )
             protection_result = protection_chain.protect_document(
                 doc_id=doc_id,
-                content=text,
+                content=_protection_content,
                 classification=classification,
                 metadata={
                     'classification_method': classification_result['method'],
@@ -1366,8 +1740,8 @@ def interactive_mode(pipeline: DocumentPipeline):
     
     # Process all documents
     print(f"\n🚀 Processing {len(documents)} document(s)...\n")
-    results = pipeline.process_batch(documents)
-    
+    pipeline.process_batch(documents)
+
     # Display statistics
     pipeline.display_statistics()
     
@@ -1423,7 +1797,7 @@ def main():
                     {'doc_id': doc.get('id', doc.get('doc_id', f'DOC_{i+1:03d}')), 'text': doc['text']}
                     for i, doc in enumerate(documents)
                 ]
-                results = pipeline.process_batch(documents)
+                pipeline.process_batch(documents)
                 pipeline.display_statistics()
                 print("✅ Audit logs saved to audit_logs/ directory\n")
 
@@ -1466,7 +1840,7 @@ def main():
                 documents = [{'doc_id': doc.get('id', doc.get('doc_id')), 'text': doc['text']} for doc in documents]
 
                 print(f"\n🚀 Processing {len(documents)} document(s)...\n")
-                results = pipeline.process_batch(documents)
+                pipeline.process_batch(documents)
                 pipeline.display_statistics()
                 print("✅ Audit logs saved to audit_logs/ directory\n")
 
@@ -1506,12 +1880,12 @@ def main():
                     for doc in documents:
                         doc['user_id'] = user_id
 
-                results = pipeline.process_batch(documents)
+                pipeline.process_batch(documents)
                 pipeline.display_statistics()
                 print("✅ Audit logs saved to audit_logs/ directory\n")
-            
+
             input("\nPress Enter to continue...")
-            
+
         elif choice == '5':
             # Exit
             print("\n" + "=" * 80)

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Upload, X, File, CheckCircle, AlertCircle, Cloud, Settings as SettingsIcon, Loader2, Shield, Lock, Ban, RefreshCw, Database, FileText, Cpu, Scale, ClipboardList, CheckCircle2, ChevronDown, ChevronRight, Download } from 'lucide-react';
+import { X, File, CheckCircle, AlertCircle, Cloud, Settings as SettingsIcon, Loader2, Shield, Lock, Ban, Database, FileText, Cpu, Scale, ClipboardList, CheckCircle2, ChevronDown, ChevronRight, Download } from 'lucide-react';
 import { Tooltip, TooltipTrigger, TooltipContent } from './ui/tooltip';
-import { classifyDocumentWithSteps, classifyPDFWithSteps, getUsers, getSampleDocuments, generateDataset, getDatasetInfo, downloadDocument, downloadWatermarkedFile, type ClassificationResult, type PipelineStepsResult, type User, type DatasetInfo } from '../services/api';
+import { classifyDocumentWithSteps, classifyPDFWithSteps, getSampleDocuments, downloadDocument, downloadWatermarkedFile, type ClassificationResult, type PipelineStepsResult } from '../services/api';
 import { SecurityBadge } from './SecurityBadge';
 import { useAuth } from '../context/AuthContext';
 import { useSettings } from '../context/SettingsContext';
@@ -31,6 +31,7 @@ function stepsToClassificationResult(data: PipelineStepsResult): ClassificationR
     confidence: s.classification.confidence,
     confidence_factors: s.classification.confidence_factors,
     confidence_explanation: s.classification.confidence_explanation,
+    confidence_formula: s.classification.confidence_formula,
     llm_raw_confidence: s.classification.llm_raw_confidence ?? undefined,
     method: s.classification.method,
     llm_classification: s.classification.llm_classification,
@@ -38,6 +39,7 @@ function stepsToClassificationResult(data: PipelineStepsResult): ClassificationR
     agreement: s.classification.agreement,
     reasoning: s.classification.reasoning,
     triggers: s.classification.triggers,
+    cde_detected: s.classification.cde_detected,
     encrypted: s.encryption.encrypted,
     storage_path: s.storage.path ?? s.storage.storage_path ?? '',
     timestamp: data.pipeline_result.timestamp,
@@ -50,14 +52,9 @@ export function UploadView() {
   const { settings, t, isRTL } = useSettings();
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
-  const [users, setUsers] = useState<User[]>([]);
-  const [selectedUser, setSelectedUser] = useState<string>('');
   const [isClassifying, setIsClassifying] = useState(false);
   const [textInput, setTextInput] = useState('');
   const [inputMode, setInputMode] = useState<'file' | 'text'>('file');
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [datasetInfo, setDatasetInfo] = useState<DatasetInfo | null>(null);
-  const [generateCount, setGenerateCount] = useState(100);
   const [trueLabel, setTrueLabel] = useState<string>(''); // Ground truth for evaluation
   const [, setClockTick] = useState(0); // Increments every second to drive live timer re-renders
   const [expandedSteps, setExpandedSteps] = useState<Record<string, number[]>>({});
@@ -118,41 +115,18 @@ export function UploadView() {
     autoEncryptC2C3: settings.autoEncryptC2C3,
   };
 
-  const loadUsers = async () => {
-    try {
-      const usersData = await getUsers();
-      setUsers(usersData);
-    } catch (err) {
-      console.error('Failed to load users:', err);
+  // Reveal pipeline steps one-by-one with a small delay so the user
+  // sees each stage appear sequentially after classification completes.
+  const revealSteps = (fileId: string, stepCount: number) => {
+    for (let i = 0; i < stepCount; i++) {
+      setTimeout(() => {
+        setExpandedSteps(prev => ({
+          ...prev,
+          [fileId]: [...(prev[fileId] ?? []), i],
+        }));
+      }, i * 180);
     }
   };
-
-  const loadDatasetInfo = async () => {
-    try {
-      const info = await getDatasetInfo();
-      setDatasetInfo(info);
-    } catch (err) {
-      console.error('Failed to load dataset info:', err);
-    }
-  };
-
-  const handleGenerateDataset = async () => {
-    setIsGenerating(true);
-    try {
-      const result = await generateDataset(generateCount);
-      alert(`✅ Generated ${result.count} documents!\n\nDistribution:\n- C0: ${result.distribution.C0 || 0}\n- C1: ${result.distribution.C1 || 0}\n- C2: ${result.distribution.C2 || 0}\n- C3: ${result.distribution.C3 || 0}\n\nFeatures:\n${result.features.map(f => '• ' + f).join('\n')}`);
-      loadDatasetInfo();
-    } catch (err) {
-      alert('❌ Failed to generate dataset: ' + (err instanceof Error ? err.message : 'Unknown error'));
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  useEffect(() => {
-    loadUsers();
-    loadDatasetInfo();
-  }, []);
 
   // Access Denied for Level 1 (Public) users
   if (!canUpload) {
@@ -307,14 +281,16 @@ export function UploadView() {
         const data = await classifyDocumentWithSteps(
           textInput,
           `DOC_${Date.now()}`,
-          selectedUser || user?.user_id || undefined,
+          user?.user_id || undefined,
           classificationSettings,
+          trueLabel || undefined,
         );
         const result = stepsToClassificationResult(data);
         setFiles(prev => prev.map(f =>
           f.id === id ? { ...f, status: 'completed', progress: 100, result, pipelineResult: data } : f
         ));
-        setExpandedSteps(prev => ({ ...prev, [id]: [0, 1, 2, 3, 4, 5, 6] }));
+        const stepCount = data.pipeline_result.stages.access ? 7 : 6;
+        revealSteps(id, stepCount);
         setTextInput('');
       } catch (err) {
         setFiles(prev => prev.map(f =>
@@ -336,14 +312,16 @@ export function UploadView() {
           data = await classifyPDFWithSteps(
             file.originalFile,
             file.name.replace(/\.[^/.]+$/, ''),
-            selectedUser || user?.user_id || undefined
+            user?.user_id || undefined,
+            trueLabel || undefined
           );
         } else {
           data = await classifyDocumentWithSteps(
             file.content,
             file.name.replace(/\.[^/.]+$/, ''),
-            selectedUser || user?.user_id || undefined,
+            user?.user_id || undefined,
             classificationSettings,
+            trueLabel || undefined,
           );
         }
 
@@ -356,7 +334,8 @@ export function UploadView() {
               : undefined,
           } : f
         ));
-        setExpandedSteps(prev => ({ ...prev, [file.id]: [0, 1, 2, 3, 4, 5, 6] }));
+        const stepCount = data.pipeline_result.stages.access ? 7 : 6;
+        revealSteps(file.id, stepCount);
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : 'Classification failed';
         setFiles(prev => prev.map(f =>
@@ -502,24 +481,65 @@ export function UploadView() {
                           const elapsed = file.classifyStartedAt
                             ? (Date.now() - file.classifyStartedAt) / 1000
                             : 0;
-                          // Smooth fill: reaches ~90% at 60s, holds until done
-                          const pct = Math.min((elapsed / 60) * 90, 90);
+
+                          const PIPELINE_STEPS = [
+                            { label: 'Text Extraction',    icon: FileText,     until: 4  },
+                            { label: 'LLaMA 3 Analysis',   icon: Cpu,          until: 22 },
+                            { label: 'Security Rules',     icon: Shield,       until: 36 },
+                            { label: 'Confidence Scoring', icon: Scale,        until: 46 },
+                            { label: 'Encrypt & Store',    icon: Lock,         until: 56 },
+                            { label: 'Audit Trail',        icon: ClipboardList, until: Infinity },
+                          ];
+
+                          // Which step is currently active (0-based)
+                          const activeIdx = PIPELINE_STEPS.findIndex(s => elapsed < s.until);
+                          const currentStep = activeIdx === -1 ? PIPELINE_STEPS.length - 1 : activeIdx;
+
+                          // Overall bar: reaches ~92% at 60s
+                          const pct = Math.min((elapsed / 60) * 92, 92);
+
                           return (
-                            <div className="mt-1">
-                              <div className="flex items-center justify-between mb-1">
-                                <div className="flex items-center gap-2">
-                                  <Loader2 className="w-4 h-4 text-[#0891B2] animate-spin flex-shrink-0" />
-                                  <span className="text-sm text-[#0891B2]">{t('upload.classifying')}</span>
+                            <div className="mt-2">
+                              {/* Step indicators */}
+                              <div className="flex items-center gap-1 mb-2 overflow-x-auto pb-1">
+                                {PIPELINE_STEPS.map((step, i) => {
+                                  const Icon = step.icon;
+                                  const done = i < currentStep;
+                                  const active = i === currentStep;
+                                  return (
+                                    <div key={i} className="flex items-center gap-1 flex-shrink-0">
+                                      <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium transition-all duration-500 ${
+                                        done   ? 'bg-[#1E3A8A]/10 text-[#1E3A8A] dark:bg-blue-900/30 dark:text-blue-400' :
+                                        active ? 'bg-[#0891B2]/15 text-[#0891B2] dark:bg-cyan-900/30 dark:text-cyan-400 ring-1 ring-[#0891B2]/40' :
+                                                 'bg-gray-100 text-gray-400 dark:bg-gray-700 dark:text-gray-500'
+                                      }`}>
+                                        {done ? (
+                                          <CheckCircle2 className="w-3 h-3 flex-shrink-0" />
+                                        ) : active ? (
+                                          <Loader2 className="w-3 h-3 flex-shrink-0 animate-spin" />
+                                        ) : (
+                                          <Icon className="w-3 h-3 flex-shrink-0" />
+                                        )}
+                                        <span>{step.label}</span>
+                                      </div>
+                                      {i < PIPELINE_STEPS.length - 1 && (
+                                        <div className={`w-3 h-px flex-shrink-0 transition-colors duration-500 ${done ? 'bg-[#1E3A8A]/40' : 'bg-gray-200 dark:bg-gray-600'}`} />
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              {/* Progress bar + timer */}
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1 bg-gray-200 dark:bg-gray-600 rounded-full h-1">
+                                  <div
+                                    className="bg-gradient-to-r from-[#1E3A8A] to-[#0891B2] h-1 rounded-full transition-all duration-200"
+                                    style={{ width: `${pct}%` }}
+                                  />
                                 </div>
-                                <span className="text-xs font-mono text-[#0891B2] tabular-nums">
+                                <span className="text-xs font-mono text-gray-400 tabular-nums flex-shrink-0">
                                   {elapsed.toFixed(1)}s
                                 </span>
-                              </div>
-                              <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-1.5">
-                                <div
-                                  className="bg-gradient-to-r from-[#1E3A8A] to-[#0891B2] h-1.5 rounded-full transition-all duration-100"
-                                  style={{ width: `${pct}%` }}
-                                />
                               </div>
                             </div>
                           );
@@ -576,6 +596,34 @@ export function UploadView() {
                           </div>
                         </div>
 
+                        {/* Document Status */}
+                        {file.result.status && (() => {
+                          const s = file.result.status;
+                          const cfg: Record<string, { chip: string; icon: string; label: string; note?: string }> = {
+                            ACTIVE:             { chip: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400', icon: '✓', label: 'Active — accessible immediately' },
+                            APPROVED:           { chip: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300', icon: '✓', label: 'Approved' },
+                            REJECTED:           { chip: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400', icon: '✗', label: 'Rejected' },
+                          };
+                          const c = cfg[s] ?? { chip: 'bg-gray-100 text-gray-600', icon: '·', label: s.replace(/_/g, ' ') };
+                          return (
+                            <div className="mt-3 space-y-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${c.chip}`}>
+                                  {c.icon}&nbsp;{c.label}
+                                </span>
+                                {file.result.verification_route && file.result.verification_route !== 'ACTIVE' && (
+                                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                                    Route: <span className="font-medium text-gray-700 dark:text-gray-300">{file.result.verification_route.replace(/_/g, ' ')}</span>
+                                  </span>
+                                )}
+                              </div>
+                              {c.note && (
+                                <p className="text-xs text-gray-500 dark:text-gray-400 pl-1">{c.note}</p>
+                              )}
+                            </div>
+                          );
+                        })()}
+
                         {/* OCR timing (images only) */}
                         {(file.result.ocr_job_seconds !== undefined || file.ocrTotalSeconds !== undefined) && (
                           <div className="mt-3 flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
@@ -596,7 +644,7 @@ export function UploadView() {
                               <span className="text-lg">📊</span>
                               <span className="font-medium text-purple-700 dark:text-purple-400">Multi-Factor Confidence Scoring</span>
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-3 gap-3">
                               {/* Agreement Factor */}
                               <div className="text-center">
                                 <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Agreement (Dietterich, 2000)</div>
@@ -623,9 +671,24 @@ export function UploadView() {
                                   {(file.result.confidence_factors.evidence * 100).toFixed(0)}%
                                 </div>
                               </div>
+                              {/* LLM Calibration Factor */}
+                              <div className="text-center">
+                                <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">LLM Calibration (Guo, 2017)</div>
+                                <div className="relative h-3 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden">
+                                  <div
+                                    className="absolute left-0 top-0 h-full bg-purple-500 rounded-full"
+                                    style={{ width: `${(file.result.confidence_factors.llm ?? 0.6) * 100}%` }}
+                                  />
+                                </div>
+                                <div className="text-sm font-semibold text-gray-700 dark:text-gray-300 mt-1">
+                                  {((file.result.confidence_factors.llm ?? 0.6) * 100).toFixed(0)}%
+                                </div>
+                              </div>
                             </div>
                             <div className="mt-3 text-xs text-gray-500 dark:text-gray-400 text-center">
-                              Formula: 0.50 × Agreement + 0.50 × Evidence
+                              {file.result.confidence_formula
+                                ? file.result.confidence_formula
+                                : 'w₁ × Agreement + w₂ × Evidence + w₃ × LLM Calibration'}
                             </div>
                           </div>
                         )}
@@ -640,13 +703,28 @@ export function UploadView() {
                               Method: {file.result.method}
                             </div>
                           </div>
-                          {file.result.triggers && file.result.triggers.length > 0 && (
-                            <div className="mt-2 flex flex-wrap gap-1">
-                              {file.result.triggers.map((trigger, idx) => (
-                                <span key={idx} className="px-2 py-0.5 text-xs bg-blue-100 dark:bg-blue-800 text-blue-700 dark:text-blue-300 rounded-full">
-                                  {trigger}
-                                </span>
-                              ))}
+                          {file.result.triggers && file.result.triggers.length > 0 && (file.result.classification === 'C2' || file.result.classification === 'C3') && (
+                            <div className="mt-2">
+                              <span className="text-xs text-blue-500 dark:text-blue-400 font-medium">Rule Triggers</span>
+                              <div className="mt-1 flex flex-wrap gap-1">
+                                {file.result.triggers.map((trigger, idx) => (
+                                  <span key={idx} className="px-2 py-0.5 text-xs bg-blue-100 dark:bg-blue-800 text-blue-700 dark:text-blue-300 rounded-full">
+                                    {trigger}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {file.result.cde_detected && file.result.cde_detected.length > 0 && (file.result.classification === 'C2' || file.result.classification === 'C3') && (
+                            <div className="mt-2">
+                              <span className="text-xs text-red-500 dark:text-red-400 font-medium">CDEs Detected</span>
+                              <div className="mt-1 flex flex-wrap gap-1">
+                                {file.result.cde_detected.map((cde, idx) => (
+                                  <span key={idx} className="px-2 py-0.5 text-xs bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 rounded-full font-medium">
+                                    ⚠ {cde}
+                                  </span>
+                                ))}
+                              </div>
                             </div>
                           )}
                         </div>
@@ -786,6 +864,14 @@ export function UploadView() {
                               ))}
                             </div>
                           )}
+                          {stages.classification.cde_detected && stages.classification.cde_detected.length > 0 && (
+                            <div className="flex flex-wrap gap-1 pt-1">
+                              <span className="text-xs text-red-500 dark:text-red-400 w-full font-medium">CDEs:</span>
+                              {stages.classification.cde_detected.map((c, k) => (
+                                <span key={k} className="px-2 py-0.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-full text-xs font-medium">⚠ {c}</span>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )});
 
@@ -797,6 +883,7 @@ export function UploadView() {
                             ...(stages.classification.confidence_factors ? [
                               ['Agreement (Dietterich)', `${(stages.classification.confidence_factors.agreement * 100).toFixed(0)}%`],
                               ['Evidence (Dempster-Shafer)', `${(stages.classification.confidence_factors.evidence * 100).toFixed(0)}%`],
+                              ['LLM Calibration (Guo)', `${((stages.classification.confidence_factors.llm ?? 0.6) * 100).toFixed(0)}%`],
                             ] : []),
                           ].map(([label, value], k) => (
                             <div key={k} className="flex justify-between gap-4 px-3 py-1.5 even:bg-gray-50/70 dark:even:bg-gray-800/40">
@@ -955,79 +1042,22 @@ export function UploadView() {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  {t('upload.testAccessControl')}
-                </label>
-                <select
-                  value={selectedUser}
-                  onChange={(e) => setSelectedUser(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-gray-100"
-                >
-                  <option value="">{t('upload.noUser')}</option>
-                  {users.map((user) => (
-                    <option key={user.user_id} value={user.user_id}>
-                      {user.name} (Level {user.access_level})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Ground Truth Label (for evaluation)
+                  Ground Truth Label <span className="text-gray-400 font-normal">(for evaluation)</span>
                 </label>
                 <select
                   value={trueLabel}
                   onChange={(e) => setTrueLabel(e.target.value)}
                   className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-gray-100"
                 >
-                  <option value="">No label (skip evaluation)</option>
-                  <option value="C0">C0 - Public</option>
-                  <option value="C1">C1 - Internal</option>
-                  <option value="C2">C2 - Confidential</option>
-                  <option value="C3">C3 - Highly Sensitive</option>
+                  <option value="">No label — skip evaluation</option>
+                  <option value="C0">C0 — Public</option>
+                  <option value="C1">C1 — Internal</option>
+                  <option value="C2">C2 — Confidential</option>
+                  <option value="C3">C3 — Highly Sensitive</option>
                 </select>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Provide the correct classification to evaluate accuracy
+                  Provide the correct classification to evaluate model accuracy
                 </p>
-              </div>
-
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {t('upload.processingOptions')}
-                </label>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    defaultChecked
-                    disabled
-                    className="w-4 h-4 text-[#1E3A8A] rounded"
-                  />
-                  <span className="text-sm text-gray-600 dark:text-gray-400">
-                    🤖 {t('upload.hybridAI')}
-                  </span>
-                </label>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    defaultChecked
-                    disabled
-                    className="w-4 h-4 text-[#1E3A8A] rounded"
-                  />
-                  <span className="text-sm text-gray-600 dark:text-gray-400">
-                    {t('upload.autoEncrypt')}
-                  </span>
-                </label>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    defaultChecked
-                    disabled
-                    className="w-4 h-4 text-[#1E3A8A] rounded"
-                  />
-                  <span className="text-sm text-gray-600 dark:text-gray-400">
-                    {t('upload.generateAudit')}
-                  </span>
-                </label>
               </div>
 
               <button
@@ -1050,67 +1080,6 @@ export function UploadView() {
             </div>
           </div>
 
-          {/* Generate Test Data Panel */}
-          <div className="bg-purple-50 dark:bg-purple-900/20 rounded-xl p-6 border border-purple-200 dark:border-purple-800">
-            <div className="flex items-center gap-2 mb-4">
-              <Database className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-              <h4 className="font-semibold text-purple-900 dark:text-purple-300">
-                Generate Test Data
-              </h4>
-            </div>
-
-            {datasetInfo && datasetInfo.exists && (
-              <div className="mb-4 p-3 bg-white dark:bg-gray-800 rounded-lg text-xs">
-                <p className="text-gray-600 dark:text-gray-400 mb-1">Current Dataset:</p>
-                <p className="font-medium text-gray-900 dark:text-gray-100">{datasetInfo.count} documents</p>
-                <div className="flex gap-2 mt-1 flex-wrap">
-                  {datasetInfo.distribution && Object.entries(datasetInfo.distribution).map(([level, count]) => (
-                    <span key={level} className="px-2 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 rounded">
-                      {level}: {count}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-purple-700 dark:text-purple-400 mb-1">
-                  Number of Documents
-                </label>
-                <input
-                  type="number"
-                  min={10}
-                  max={500}
-                  value={generateCount}
-                  onChange={(e) => setGenerateCount(Math.min(500, Math.max(10, parseInt(e.target.value) || 100)))}
-                  className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-purple-300 dark:border-purple-700 rounded-lg text-gray-900 dark:text-gray-100 text-sm"
-                />
-              </div>
-
-              <button
-                onClick={handleGenerateDataset}
-                disabled={isGenerating}
-                className="w-full px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-all font-medium disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {isGenerating ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="w-4 h-4" />
-                    Generate Dataset
-                  </>
-                )}
-              </button>
-
-              <p className="text-xs text-purple-600 dark:text-purple-400">
-                Creates diverse Arabic/English documents with valid Egyptian National IDs, passports, IBANs, and salary data.
-              </p>
-            </div>
-          </div>
 
           {/* Info Panel */}
           <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-6 border border-blue-200 dark:border-blue-800">

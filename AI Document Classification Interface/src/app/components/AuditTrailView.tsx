@@ -140,14 +140,25 @@ function BlockCard({ block, isExpanded, onToggle, users }: BlockCardProps) {
                   className="p-2 bg-gray-50 dark:bg-gray-700/30 rounded-lg text-xs"
                 >
                   <div className="flex items-center justify-between mb-1">
-                    <span className={`px-2 py-0.5 rounded-full font-medium ${
+                    <span className={`px-2 py-0.5 rounded-full font-medium text-[11px] ${
                       event.event_type === 'GENESIS' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' :
+                      event.event_type === 'USER_LOGIN' ? 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400' :
                       event.event_type.includes('DENIED') ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
-                      event.event_type.includes('CLASSIFICATION') ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
-                      event.event_type.includes('ENCRYPT') ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                      event.event_type.includes('CLASSIF') ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
+                      event.event_type.includes('ENCRYPT') ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
+                      event.event_type.includes('SIGN') ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400' :
+                      event.event_type === 'DOCUMENT_VIEWED' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                      event.event_type === 'DOCUMENT_PREVIEWED' ? 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400' :
+                      event.event_type.includes('DOWNLOADED') ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' :
+                      event.event_type.includes('ACCESS_GRANTED') ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                      event.event_type.includes('UPLOAD') ? 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400' :
                       'bg-gray-100 text-gray-700 dark:bg-gray-600 dark:text-gray-300'
                     }`}>
-                      {event.event_type}
+                      {event.event_type === 'USER_LOGIN' ? 'Login' :
+                       event.event_type === 'DOCUMENT_VIEWED' ? 'Viewed' :
+                       event.event_type === 'DOCUMENT_PREVIEWED' ? 'Previewed' :
+                       event.event_type.includes('DOWNLOADED') ? 'Downloaded' :
+                       event.event_type}
                     </span>
                     <span className="text-gray-500 dark:text-gray-400">
                       {new Date(event.timestamp).toLocaleTimeString()}
@@ -186,6 +197,18 @@ function BlockCard({ block, isExpanded, onToggle, users }: BlockCardProps) {
                       )}
                       {event.data.action && (
                         <div><span className="font-medium">Action:</span> {String(event.data.action)}</div>
+                      )}
+                      {event.data.filename && (
+                        <div><span className="font-medium">File:</span> {String(event.data.filename)}</div>
+                      )}
+                      {event.data.download_type && (
+                        <div><span className="font-medium">Type:</span> {String(event.data.download_type) === 'ocr_text' ? 'OCR Text' : 'Watermarked'}</div>
+                      )}
+                      {event.data.role && (
+                        <div><span className="font-medium">Role:</span> {String(event.data.role)}</div>
+                      )}
+                      {event.data.department && (
+                        <div><span className="font-medium">Dept:</span> {String(event.data.department)}</div>
                       )}
                       {event.data.reason && (
                         <div className="text-red-600 dark:text-red-400">

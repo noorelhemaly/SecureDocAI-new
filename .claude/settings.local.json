@@ -52,7 +52,19 @@
       "Bash(cd \"/Users/noorelhemaly/Downloads/SecureDoc AI\" && python3 -c \"\nimport sys\nsys.path.insert\\(0, 'src'\\)\nfrom pdf_extractor import PDFExtractor, QWEN_OCR_AVAILABLE\n\nprint\\('Qwen available:', QWEN_OCR_AVAILABLE\\)\n\nwith open\\('/Users/noorelhemaly/Downloads/models/test_images/test2.jpg', 'rb'\\) as f:\n    img_bytes = f.read\\(\\)\n\nextractor = PDFExtractor\\(\\)\nresult = extractor.extract_from_image_bytes\\(img_bytes, filename='test2.jpg'\\)\n\nprint\\('Method:', result.get\\('method'\\)\\)\nprint\\('Engine:', result.get\\('ocr_engine', 'tesseract'\\)\\)\nprint\\('Success:', result.get\\('success'\\)\\)\nprint\\('Time:', result.get\\('inference_time_seconds', 'N/A'\\), 's'\\)\nprint\\('Text preview:', result.get\\('text', ''\\)[:300]\\)\n\" 2>&1)",
       "Bash(cd \"/Users/noorelhemaly/Downloads/SecureDoc AI\" && python3 -c \"\nimport sys\nsys.path.insert\\(0, 'src'\\)\nfrom pdf_extractor import PDFExtractor\n\nwith open\\('/Users/noorelhemaly/Downloads/models/test_images/test2.jpg', 'rb'\\) as f:\n    img_bytes = f.read\\(\\)\n\nextractor = PDFExtractor\\(\\)\nresult = extractor.extract_from_image_bytes\\(img_bytes, filename='test2.jpg'\\)\n\nprint\\('Method:', result.get\\('method'\\)\\)\nprint\\('Engine:', result.get\\('ocr_engine', 'tesseract'\\)\\)\nprint\\('Success:', result.get\\('success'\\)\\)\nprint\\('Time:', result.get\\('inference_time_seconds', 'N/A'\\), 's'\\)\nprint\\(\\)\nprint\\('=== EXTRACTED TEXT ==='\\)\nprint\\(result.get\\('text', ''\\)[:500]\\)\n\" 2>&1)",
       "Bash(node_modules/.bin/tsc --noEmit)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(python3 -c \":*)",
+      "Bash(rm -f \"/Users/noorelhemaly/Downloads/SecureDoc AI/storage/secure_storage/\"*.json)",
+      "Bash(rm -f \"/Users/noorelhemaly/Downloads/SecureDoc AI/storage/audit_logs/\"*.jsonl)",
+      "Bash(rm -f \"/Users/noorelhemaly/Downloads/SecureDoc AI/storage/original_files/\"*)",
+      "Bash(rm -f \"/Users/noorelhemaly/Downloads/SecureDoc AI/storage/signatures/\"*.json)",
+      "Bash(python generate_account_opening_forms.py)",
+      "Bash(python -m pytest tests/test_securedoc.py -x -q)",
+      "Bash(rm -f \"/Users/noorelhemaly/Downloads/SecureDoc AI/storage/audit_logs/audit_\"*.jsonl)",
+      "Bash(\"/Users/noorelhemaly/Downloads/SecureDoc AI/storage/audit_logs/blockchain.json\")",
+      "Bash(\"/Users/noorelhemaly/Downloads/SecureDoc AI/storage/audit_logs/pending_events.json\")",
+      "Bash(timeout 150 python3 -c \":*)",
+      "Bash(\"/Users/noorelhemaly/Downloads/SecureDoc AI/storage/audit_logs/protection_chain.json\")"
     ],
     "deny": [],
     "ask": []
